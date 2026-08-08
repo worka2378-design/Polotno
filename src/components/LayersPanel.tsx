@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Search, Eye, EyeOff, Lock, Unlock, Copy, Trash2, 
-  StickyNote, PenTool, Pin, MoreHorizontal, Palette, Edit2,
-  Music, Video, FileImage, FileText, File, Highlighter, Eraser, Minus, MoveRight,
+  StickyNote, Pin, MoreHorizontal, Palette, Edit2,
+  Music, Video, FileImage, FileText, File,
   Folder as FolderIcon, FolderOpen, FolderPlus, ChevronRight, ChevronDown, FolderOutput,
-  LayoutGrid, Tag, Sun, Moon, Cloud, Link2, Plus, ExternalLink, MousePointer2, Layers, Film, Download, Upload, HardDrive, Paperclip
+  LayoutGrid, Tag, Cloud, Link2, Plus, ExternalLink, MousePointer2, Layers, Film, Download, Paperclip
 } from 'lucide-react';
 import { Note, Point, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from '../types';
-import { NOTE_COLOR_CLASSES, COLOR_PALETTE_ITEMS } from '../utils/theme';
-import { countLinksInContent, extractLinksFromContent, extractUrlDetails, isUrl } from '../utils/linkUtils';
+import { COLOR_PALETTE_ITEMS } from '../utils/theme';
+import { countLinksInContent, extractLinksFromContent } from '../utils/linkUtils';
 
 interface LayersPanelProps {
   notes: Note[];
@@ -31,7 +31,6 @@ interface LayersPanelProps {
   onArrangeFolderGrid?: (folderId: string) => void;
 
   // Layer Reordering
-  onMoveLayerStep: (id: string, type: 'note', direction: 'up' | 'down') => void;
   onReorderLayer: (sourceId: string, sourceType: 'note', targetId: string, targetType: 'note') => void;
 
   // Active Tab
@@ -65,22 +64,6 @@ interface LayersPanelProps {
 
   fileMetadata?: Record<string, FileMetadata>;
   onUpdateFileMetadata?: (fileId: string, updates: Partial<FileMetadata>) => void;
-}
-
-interface UnifiedLinkItem {
-  id: string;
-  url: string;
-  title: string;
-  domain: string;
-  faviconUrl: string;
-  isStandalone: boolean;
-  standaloneId?: string;
-  noteId?: string;
-  noteTitle?: string;
-  noteX?: number;
-  noteY?: number;
-  folderId?: string;
-  tags: string[];
 }
 
 interface UnifiedFileItem {
@@ -121,7 +104,6 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
   onDeleteFolder,
   onMoveLayerToFolder,
   onArrangeFolderGrid,
-  onMoveLayerStep,
   onReorderLayer,
   activeTab: initialActiveTab = 'layers',
   onChangeTab,
@@ -415,21 +397,6 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
     } else {
       onUpdateLinkMetadata?.(link.url, { tags: updated });
     }
-  };
-
-  const handleAddTagToLinkFolder = (folder: LinkFolder, tagInput: string) => {
-    const clean = tagInput.replace(/^#/, '').trim();
-    if (!clean) return;
-    const current = folder.tags || [];
-    if (current.includes(clean)) return;
-    const updated = [...current, clean];
-    onUpdateLinkFolder?.(folder.id, { tags: updated });
-  };
-
-  const handleRemoveTagFromLinkFolder = (folder: LinkFolder, tagToRemove: string) => {
-    const current = folder.tags || [];
-    const updated = current.filter((t) => t !== tagToRemove);
-    onUpdateLinkFolder?.(folder.id, { tags: updated });
   };
 
   const handleCreateStandaloneLinkSubmit = (e: React.FormEvent) => {

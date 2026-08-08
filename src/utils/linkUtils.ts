@@ -6,6 +6,31 @@ export interface LinkDetails {
 }
 
 /**
+ * Shared regex pattern for matching web URLs globally
+ */
+export const URL_REGEX_GLOBAL = /(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi;
+
+/**
+ * Helper to match all URLs in a string
+ */
+export function matchUrls(text: string): string[] | null {
+  if (!text) return null;
+  return text.match(URL_REGEX_GLOBAL);
+}
+
+/**
+ * Checks if URL is a tracking, schema, or internal helper URL (e.g., favicons, w3.org)
+ */
+export function isTrackingOrInternalUrl(url: string): boolean {
+  if (!url) return true;
+  return (
+    url.includes('w3.org') ||
+    url.includes('schema.org') ||
+    url.includes('google.com/s2/favicons')
+  );
+}
+
+/**
  * Known domain titles mapping for clean branding
  */
 const DOMAIN_BRAND_MAP: Record<string, string> = {
@@ -168,27 +193,20 @@ export function convertTextUrlsToLinkCards(content: string): string {
         const text = node.textContent;
         if (!text) return;
 
-        const urlRegex = /(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi;
-        const matches = text.match(urlRegex);
+        const matches = matchUrls(text);
         if (matches) {
           // Filter out w3.org, schema.org, google favicon links
-          const validUserUrls = matches.filter(url => 
-            !url.includes('w3.org') && 
-            !url.includes('schema.org') &&
-            !url.includes('google.com/s2/favicons')
-          );
+          const validUserUrls = matches.filter(url => !isTrackingOrInternalUrl(url));
 
           if (validUserUrls.length === 0) return;
 
           const wrapper = doc.createElement('span');
-          const parts = text.split(/(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi);
+          const parts = text.split(URL_REGEX_GLOBAL);
 
           parts.forEach((part) => {
             if (
               /^(https?:\/\/|www\.)[^\s<"']+/i.test(part) &&
-              !part.includes('w3.org') &&
-              !part.includes('schema.org') &&
-              !part.includes('google.com/s2/favicons')
+              !isTrackingOrInternalUrl(part)
             ) {
               const cardHtml = createLinkCardHtml(part);
               const tempDoc = parser.parseFromString(`<body>${cardHtml}</body>`, 'text/html');
@@ -285,17 +303,17 @@ export function sanitizeCorruptedLinkContent(content: string): string {
       // Find hrefs in <a> tags
       doc.querySelectorAll('a').forEach((a) => {
         const href = a.getAttribute('href');
-        if (href && !href.includes('w3.org') && !href.includes('schema.org') && !href.includes('google.com/s2/favicons')) {
+        if (href && !isTrackingOrInternalUrl(href)) {
           validUrls.add(href);
         }
       });
 
       // Also search text content for standalone user URLs
       const text = doc.body.textContent || '';
-      const matches = text.match(/(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi);
+      const matches = matchUrls(text);
       if (matches) {
         matches.forEach((url) => {
-          if (!url.includes('w3.org') && !url.includes('schema.org') && !url.includes('google.com/s2/favicons')) {
+          if (!isTrackingOrInternalUrl(url)) {
             validUrls.add(url);
           }
         });
@@ -324,17 +342,17 @@ export function countLinksInContent(content: string): number {
     // Check <a> elements with href
     doc.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href');
-      if (href && !href.includes('w3.org') && !href.includes('schema.org') && !href.includes('google.com/s2/favicons')) {
+      if (href && !isTrackingOrInternalUrl(href)) {
         links.add(href.trim());
       }
     });
 
     // Also check text content for standalone user URLs
     const text = doc.body.textContent || '';
-    const matches = text.match(/(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi);
+    const matches = matchUrls(text);
     if (matches) {
       matches.forEach((url) => {
-        if (!url.includes('w3.org') && !url.includes('schema.org') && !url.includes('google.com/s2/favicons')) {
+        if (!isTrackingOrInternalUrl(url)) {
           links.add(url.trim());
         }
       });
@@ -358,7 +376,7 @@ export function extractLinksFromContent(content: string): LinkDetails[] {
 
     doc.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href');
-      if (href && !href.includes('w3.org') && !href.includes('schema.org') && !href.includes('google.com/s2/favicons')) {
+      if (href && !isTrackingOrInternalUrl(href)) {
         const details = extractUrlDetails(href);
         const linkText = a.textContent?.trim();
         if (linkText && !isUrl(linkText) && linkText.length > 1 && !linkText.includes('(')) {
@@ -369,10 +387,10 @@ export function extractLinksFromContent(content: string): LinkDetails[] {
     });
 
     const text = doc.body.textContent || '';
-    const matches = text.match(/(https?:\/\/[^\s<"']+|www\.[^\s<"']+)/gi);
+    const matches = matchUrls(text);
     if (matches) {
       matches.forEach((rawUrl) => {
-        if (!rawUrl.includes('w3.org') && !rawUrl.includes('schema.org') && !rawUrl.includes('google.com/s2/favicons')) {
+        if (!isTrackingOrInternalUrl(rawUrl)) {
           const details = extractUrlDetails(rawUrl);
           if (!urlMap.has(details.url)) {
             urlMap.set(details.url, details);
@@ -385,4 +403,17 @@ export function extractLinksFromContent(content: string): LinkDetails[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Escapes special HTML characters to prevent XSS vulnerability
+ */
+export function escapeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

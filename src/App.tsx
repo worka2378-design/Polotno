@@ -8,14 +8,14 @@ import { ImportModal } from './components/ImportModal';
 import { screenToCanvas } from './utils/canvas';
 import { createPlannerHTML } from './utils/planner';
 import { encryptVault } from './utils/crypto';
-import { isUrl, createLinkCardHtml } from './utils/linkUtils';
+import { isUrl, createLinkCardHtml, escapeHtml } from './utils/linkUtils';
 
 import { LayersPanel } from './components/LayersPanel';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { ToastContainer, ToastMessage } from './components/ToastContainer';
 import { saveBoardToDrive, uploadFileToDrive, getCurrentDriveUser } from './utils/googleDrive';
 import { saveAttachmentData, getAllAttachmentsData, deleteAttachmentData } from './utils/attachmentStorage';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 
 import { FrameCard } from './components/FrameCard';
 
@@ -384,11 +384,28 @@ export default function App() {
         })
       : event.start?.date || '';
 
-    const content = `📅 **${event.summary}**\n${
-      eventDateStr ? `🕒 ${eventDateStr}\n` : ''
-    }${event.description ? `\n${event.description}` : ''}${
-      event.htmlLink ? `\n\n🔗 ${event.htmlLink}` : ''
-    }`;
+    const summaryEscaped = escapeHtml(event.summary || 'Без назви');
+    const dateEscaped = escapeHtml(eventDateStr);
+    const descriptionEscaped = escapeHtml(event.description || '').replace(/\r?\n/g, '<br/>');
+    const htmlLinkEscaped = escapeHtml(event.htmlLink || '');
+
+    const contentParts = [
+      `<div>📅 <strong>${summaryEscaped}</strong></div>`,
+    ];
+
+    if (dateEscaped) {
+      contentParts.push(`<div>🕒 ${dateEscaped}</div>`);
+    }
+
+    if (descriptionEscaped) {
+      contentParts.push(`<div style="margin-top: 6px;">${descriptionEscaped}</div>`);
+    }
+
+    if (htmlLinkEscaped) {
+      contentParts.push(`<div style="margin-top: 6px;"><a href="${htmlLinkEscaped}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">🔗 Відкрити в Календарі</a></div>`);
+    }
+
+    const content = contentParts.join('');
 
     const newNote: Note = {
       id: `note_${Date.now()}`,
@@ -408,11 +425,23 @@ export default function App() {
     setMaxZIndex((prev) => prev + 1);
     setNotes((prev) => [...prev, newNote]);
     setSelectedNoteId(newNote.id);
-    addToast('success', `Подію "${event.summary}" успішно додано на борд!`);
+    addToast('success', `Подію "${event.summary || 'Без назви'}" успішно додано на борд!`);
   };
 
   const handleRestoreBoardFromDrive = (restoredData: any) => {
-    if (restoredData.notes) setNotes(restoredData.notes);
+    if (restoredData.notes) {
+      const newNotes = restoredData.notes as Note[];
+      const newAttIds = new Set<string>();
+      newNotes.forEach((n) => n.attachments?.forEach((a) => a.id && newAttIds.add(a.id)));
+      notes.forEach((n) => {
+        n.attachments?.forEach((a) => {
+          if (a.id && !newAttIds.has(a.id)) {
+            deleteAttachmentData(a.id).catch(() => {});
+          }
+        });
+      });
+      setNotes(newNotes);
+    }
     if (restoredData.canvasOffset) setOffset(restoredData.canvasOffset);
     if (restoredData.canvasScale) setScale(restoredData.canvasScale);
   };
@@ -502,9 +531,23 @@ export default function App() {
         console.error('Failed to load local storage:', e);
       }
 
-      // Rehydrate attachment data URLs from IndexedDB
+      // Rehydrate attachment data URLs from IndexedDB & cleanup orphans
       try {
         const attMap = await getAllAttachmentsData();
+
+        // Garbage collect orphaned attachments from IndexedDB
+        const activeAttIds = new Set<string>();
+        initialNotes.forEach((n) => {
+          n.attachments?.forEach((att) => {
+            if (att.id) activeAttIds.add(att.id);
+          });
+        });
+        Object.keys(attMap).forEach((storedId) => {
+          if (!activeAttIds.has(storedId)) {
+            deleteAttachmentData(storedId).catch(() => {});
+          }
+        });
+
         if (Object.keys(attMap).length > 0 && initialNotes.length > 0) {
           initialNotes = initialNotes.map((note) => {
             if (!note.attachments || note.attachments.length === 0) return note;
@@ -621,9 +664,9 @@ export default function App() {
       const idx = historyIndexRef.current;
       const currentSnapshot = prev[idx];
       if (currentSnapshot) {
-        const notesEqual = JSON.stringify(currentSnapshot.notes) === JSON.stringify(newNotes);
-        const foldersEqual = JSON.stringify(currentSnapshot.folders || []) === JSON.stringify(currentFolders || []);
-        if (notesEqual && foldersEqual) return prev;
+        if (currentSnapshot.notes === newNotes && (currentSnapshot.folders || []) === (currentFolders || [])) {
+          return prev;
+        }
       }
 
       const updated = prev.slice(0, idx + 1);
@@ -811,10 +854,6 @@ export default function App() {
     commitHistoryDebounced();
   }, [commitHistoryDebounced]);
 
-  const handleSelectNote = useCallback((id: string) => {
-    setSelectedNoteId((prev) => (prev === id ? prev : id));
-  }, []);
-
   const checkAndAutoGroupNotes = useCallback((movedNoteIds: string[]) => {
     const idsToCheck = movedNoteIds.length > 0 ? movedNoteIds : notesRef.current.map((n) => n.id);
     if (idsToCheck.length === 0) return;
@@ -923,6 +962,14 @@ export default function App() {
 
   const handleDeleteNote = useCallback((id: string) => {
     setNotes((prev) => {
+      const targetNote = prev.find((n) => n.id === id);
+      if (targetNote?.attachments && targetNote.attachments.length > 0) {
+        targetNote.attachments.forEach((att) => {
+          if (att.id) {
+            deleteAttachmentData(att.id).catch(() => {});
+          }
+        });
+      }
       const updated = prev.filter((n) => n.id !== id);
       pushHistory(updated);
       return updated;
@@ -938,6 +985,14 @@ export default function App() {
       const newZ = maxZIndexRef.current + 1;
       setMaxZIndex(newZ);
 
+      const dupAttachments = target.attachments?.map((att) => {
+        const newAttId = 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        if (att.url) {
+          saveAttachmentData(newAttId, att.url).catch(() => {});
+        }
+        return { ...att, id: newAttId };
+      });
+
       const dup: Note = {
         ...target,
         id: 'note_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
@@ -946,6 +1001,7 @@ export default function App() {
         zIndex: newZ,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(dupAttachments ? { attachments: dupAttachments } : {}),
       };
 
       const updated = [...prev, dup];
@@ -1226,23 +1282,6 @@ export default function App() {
     setNotes(updated);
     setSelectedNoteIds([newNote.id]);
     commitHistory(updated, foldersRef.current);
-  }, [commitHistory]);
-
-  const handleMoveLayerStep = useCallback((id: string, type: 'note', direction: 'up' | 'down') => {
-    if (type === 'note') {
-      setNotes((prev) => {
-        const note = prev.find((n) => n.id === id);
-        if (!note) return prev;
-        const currentZ = note.zIndex || 0;
-        const newZ = direction === 'up' ? currentZ + 1 : Math.max(0, currentZ - 1);
-        if (newZ > maxZIndexRef.current) {
-          setMaxZIndex(newZ);
-        }
-        const updated = prev.map((n) => (n.id === id ? { ...n, zIndex: newZ } : n));
-        commitHistory(updated, foldersRef.current);
-        return updated;
-      });
-    }
   }, [commitHistory]);
 
   const handleReorderLayer = useCallback((
@@ -2023,6 +2062,16 @@ export default function App() {
     const newNotes = Array.isArray(payload.notes) ? payload.notes : [];
 
     if (mode === 'replace') {
+      const newAttIds = new Set<string>();
+      newNotes.forEach((n) => n.attachments?.forEach((a) => a.id && newAttIds.add(a.id)));
+      notes.forEach((n) => {
+        n.attachments?.forEach((a) => {
+          if (a.id && !newAttIds.has(a.id)) {
+            deleteAttachmentData(a.id).catch(() => {});
+          }
+        });
+      });
+
       setNotes(newNotes);
       if (payload.canvasOffset) setOffset(payload.canvasOffset);
       if (payload.canvasScale) setScale(payload.canvasScale);
@@ -2146,7 +2195,6 @@ export default function App() {
                         onUpdate={handleUpdateNote}
                         onUpdateEnd={handleUpdateEnd}
                         onDelete={handleDeleteNote}
-                        onDuplicate={handleDuplicateNote}
                         onBringToFront={handleBringToFront}
                       />
                     </div>
@@ -2173,7 +2221,6 @@ export default function App() {
                     onUpdate={handleUpdateNote}
                     onUpdateEnd={handleUpdateEnd}
                     onDelete={handleDeleteNote}
-                    onDuplicate={handleDuplicateNote}
                     onBringToFront={handleBringToFront}
                   />
                 </div>
@@ -2206,32 +2253,21 @@ export default function App() {
       {/* Sleek Floating Dock / Unified Toolbar */}
       <Toolbar
         onAddNote={() => handleAddNote()}
-        onAddPlanner={() => handleAddPlanner()}
-        onAttachFile={handleAttachFile}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onOpenVaultModal={() => setIsVaultModalOpen(true)}
-        onOpenExportModal={() => setIsExportModalOpen(true)}
         selectedNoteId={selectedNoteId}
         onFormatNote={handleFormatActiveNote}
         onUpdateNoteProps={handleUpdateNoteProps}
         activeNoteFont={selectedNote?.fontFamily}
-        activeNoteContent={selectedNote?.content}
         activeNoteSize={selectedNote?.fontSize}
         activeNoteAlign={selectedNote?.textAlign}
-        activeNoteColor={selectedNote?.color}
         scale={scale}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
-        onResetZoom={handleResetZoom}
         showLayersPanel={showLayersPanel}
         setShowLayersPanel={setShowLayersPanel}
-        activePanelTab={activePanelTab}
-        setActivePanelTab={setActivePanelTab}
-        onOpenDriveModal={() => setIsDriveModalOpen(true)}
-        onCreateFrame={() => handleCreateFrameFromSelection()}
       />
 
       <AnimatePresence>
@@ -2255,7 +2291,6 @@ export default function App() {
             onDeleteFolder={handleDeleteFolder}
             onMoveLayerToFolder={handleMoveLayerToFolder}
             onArrangeFolderGrid={handleArrangeFolderGrid}
-            onMoveLayerStep={handleMoveLayerStep}
             onReorderLayer={handleReorderLayer}
             activeTab={activePanelTab}
             onChangeTab={setActivePanelTab}

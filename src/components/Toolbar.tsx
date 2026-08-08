@@ -2,12 +2,12 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MousePointer2, Plus, Highlighter, 
-  Undo2, Redo2, ShieldCheck, Download, 
+  Undo2, Redo2, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Underline, ZoomIn, ZoomOut, Layers, List, ListOrdered, CheckSquare, FolderPlus, Palette, Type, Link2
+  Bold, Italic, Underline, ZoomIn, ZoomOut, Layers, List, ListOrdered, CheckSquare, Palette, Type
 } from 'lucide-react';
 import { NoteColor, FontFamily, FontSize, TextAlign } from '../types';
-import { FONT_FAMILY_STYLES, COLOR_PALETTE_ITEMS } from '../utils/theme';
+import { FONT_FAMILY_STYLES } from '../utils/theme';
 
 const HIGHLIGHT_COLORS = [
   { color: '#fef08a', label: 'Жовтий маркер' },
@@ -29,17 +29,11 @@ const TEXT_COLORS = [
 ];
 
 interface ToolbarProps {
-  currentColor?: string;
-  setCurrentColor?: (color: string) => void;
   onAddNote: () => void;
-  onAddPlanner?: () => void;
-  onAttachFile: (files: FileList) => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onOpenVaultModal: () => void;
-  onOpenExportModal: () => void;
   // Selected Note Formatting Props
   selectedNoteId: string | null;
   onFormatNote: (command: string, value?: string) => void;
@@ -50,65 +44,40 @@ interface ToolbarProps {
     color?: NoteColor;
   }) => void;
   activeNoteFont?: FontFamily;
-  activeNoteContent?: string;
   activeNoteSize?: FontSize;
   activeNoteAlign?: TextAlign;
-  activeNoteColor?: NoteColor;
   // Zoom Controls
   scale: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onResetZoom: () => void;
   // Layers Panel
   showLayersPanel: boolean;
   setShowLayersPanel: (v: boolean) => void;
-  activePanelTab?: 'layers' | 'links';
-  setActivePanelTab?: (tab: 'layers' | 'links') => void;
-  // Google Drive
-  onOpenDriveModal?: () => void;
-  // Frame / Grouping
-  onCreateFrame?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = React.memo(({
-  currentColor,
-  setCurrentColor,
   onAddNote,
-  onAddPlanner,
-  onAttachFile,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
-  onOpenVaultModal,
-  onOpenExportModal,
   selectedNoteId,
   onFormatNote,
   onUpdateNoteProps,
   activeNoteFont = 'sans',
-  activeNoteContent = '',
   activeNoteSize = 'base',
   activeNoteAlign = 'left',
-  activeNoteColor = 'white',
-  scale,
   onZoomIn,
   onZoomOut,
-  onResetZoom,
   showLayersPanel,
   setShowLayersPanel,
-  activePanelTab = 'layers',
-  setActivePanelTab,
-  onOpenDriveModal,
-  onCreateFrame,
 }) => {
   const [showHighlightPicker, setShowHighlightPicker] = React.useState(false);
-  const [showFontPicker, setShowFontPicker] = React.useState(false);
   const [activeHighlightColor, setActiveHighlightColor] = React.useState<string>('#fef08a');
   const [listType, setListType] = React.useState<'none' | 'bullet' | 'number'>('none');
 
   React.useEffect(() => {
     setShowHighlightPicker(false);
-    setShowFontPicker(false);
   }, [selectedNoteId]);
 
   React.useEffect(() => {
@@ -116,7 +85,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
       const target = e.target as HTMLElement | null;
       if (target && !target.closest('[data-picker-container="true"]')) {
         setShowHighlightPicker(false);
-        setShowFontPicker(false);
       }
     };
 
@@ -144,27 +112,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
     return () => document.removeEventListener('selectionchange', updateListType);
   }, []);
 
-  // Detect which fonts are present in the active note (1, 2, or 3 states)
-  const activeFontList = React.useMemo(() => {
-    const baseFont: FontFamily = (activeNoteFont as FontFamily) || 'sans';
-    const content = activeNoteContent || '';
-    const fontSet = new Set<FontFamily>([baseFont]);
-
-    const lower = content.toLowerCase();
-    if (lower.includes('font-serif') || lower.includes('playfair') || lower.includes('georgia')) {
-      fontSet.add('serif');
-    }
-    if (lower.includes('font-mono') || lower.includes('fira') || lower.includes('monospace')) {
-      fontSet.add('mono');
-    }
-    if (lower.includes('font-sans') || lower.includes('ui-sans-serif') || lower.includes('system-ui')) {
-      fontSet.add('sans');
-    }
-
-    const order: FontFamily[] = ['sans', 'serif', 'mono'];
-    return order.filter((f) => fontSet.has(f));
-  }, [activeNoteFont, activeNoteContent]);
-
   // Cycle font family: sans -> serif -> mono -> sans
   const handleCycleFont = () => {
     const fontList: FontFamily[] = ['sans', 'serif', 'mono'];
@@ -189,14 +136,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
     onUpdateNoteProps({ textAlign: nextAlign });
   };
 
-  // Cycle note card color
-  const handleCycleNoteColor = () => {
-    const colorList: NoteColor[] = ['white', 'cream', 'sage', 'sky', 'rose', 'lavender', 'slate'];
-    const idx = (colorList as string[]).indexOf(activeNoteColor || 'white');
-    const nextColor = colorList[(idx + 1) % colorList.length];
-    onUpdateNoteProps({ color: nextColor });
-  };
-
   // Render align icon
   const renderAlignIcon = () => {
     switch (activeNoteAlign) {
@@ -212,10 +151,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
     }
   };
 
-  const fontLabel = activeNoteFont === 'serif' ? 'Gg' : activeNoteFont === 'mono' ? 'Mm' : 'Aa';
   const sizeLabel = activeNoteSize === 'sm' ? 'S' : activeNoteSize === 'base' ? 'M' : activeNoteSize === 'lg' ? 'L' : 'XL';
-
-  const zoomPercent = Math.round(scale * 100);
 
   return (
     <div className="fixed bottom-4 md:bottom-6 left-2 right-2 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 select-none flex justify-center">

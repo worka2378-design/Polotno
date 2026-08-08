@@ -1,14 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Trash2, Copy, Paperclip, 
-  AlignLeft, AlignCenter, AlignRight,
-  Bold, Italic, Underline, Download, X, Pin,
-  Music, Video, FileText, File, Plus, CheckSquare
+  Download, X, Pin,
+  Music, Video, FileText, File, Plus
 } from 'lucide-react';
-import { Note, NoteColor, FontFamily, FontSize, Attachment } from '../types';
+import { Note } from '../types';
 import { NOTE_COLOR_CLASSES, FONT_CLASSES, FONT_SIZE_CLASSES, FONT_FAMILY_STYLES } from '../utils/theme';
 import { deleteAttachmentData } from '../utils/attachmentStorage';
-import { isUrl, createLinkCardHtml, convertTextUrlsToLinkCards, sanitizeCorruptedLinkContent, ensureLinkCardsUpToDate } from '../utils/linkUtils';
+import { isUrl, createLinkCardHtml, convertTextUrlsToLinkCards, ensureLinkCardsUpToDate } from '../utils/linkUtils';
 
 interface NoteCardProps {
   note: Note;
@@ -18,7 +16,6 @@ interface NoteCardProps {
   onUpdate: (id: string, updates: Partial<Note>) => void;
   onUpdateEnd?: () => void;
   onDelete: (id: string) => void;
-  onDuplicate: (id: string) => void;
   onBringToFront: (id: string) => void;
 }
 
@@ -30,12 +27,9 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
   onUpdate,
   onUpdateEnd,
   onDelete,
-  onDuplicate,
   onBringToFront,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const isFocusedRef = useRef(false);
@@ -78,7 +72,6 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
     e.preventDefault(); // Prevent browser native HTML drag and text selection
     onSelect(note.id, e.shiftKey);
     onBringToFront(note.id);
-    setIsDragging(true);
 
     document.body.style.cursor = 'grabbing';
     document.body.style.userSelect = 'none';
@@ -101,7 +94,6 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
 
     const handlePointerUp = (upEvent: PointerEvent) => {
       upEvent.stopPropagation();
-      setIsDragging(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
@@ -122,7 +114,6 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
     if (note.locked) return;
     e.stopPropagation();
     e.preventDefault();
-    setIsResizing(true);
 
     document.body.style.cursor = 'se-resize';
     document.body.style.userSelect = 'none';
@@ -157,7 +148,6 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
     };
 
     const handlePointerUp = (upEvent: PointerEvent) => {
-      setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
@@ -267,15 +257,6 @@ export const NoteCard: React.FC<NoteCardProps> = React.memo(({
       document.execCommand('insertHTML', false, formattedHtml);
       handleInput();
       onUpdateEnd?.();
-    }
-  };
-
-  // Format text execCommand
-  const execFormat = (command: string, value: string | undefined = undefined) => {
-    document.execCommand(command, false, value);
-    if (editorRef.current) {
-      editorRef.current.focus();
-      handleInput();
     }
   };
 
