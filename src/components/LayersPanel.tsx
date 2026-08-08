@@ -5,7 +5,8 @@ import {
   StickyNote, Pin, MoreHorizontal, Palette, Edit2,
   Music, Video, FileImage, FileText, File,
   Folder as FolderIcon, FolderOpen, FolderPlus, ChevronRight, ChevronDown, FolderOutput,
-  LayoutGrid, Tag, Cloud, Link2, Plus, ExternalLink, MousePointer2, Layers, Film, Download, Paperclip
+  LayoutGrid, Tag, Cloud, Link2, Plus, ExternalLink, MousePointer2, Layers, Film, Download, Paperclip,
+  ZoomIn, ZoomOut, Maximize2, Map
 } from 'lucide-react';
 import { Note, Point, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from '../types';
 import { COLOR_PALETTE_ITEMS } from '../utils/theme';
@@ -34,8 +35,8 @@ interface LayersPanelProps {
   onReorderLayer: (sourceId: string, sourceType: 'note', targetId: string, targetType: 'note') => void;
 
   // Active Tab
-  activeTab?: 'layers' | 'links' | 'files';
-  onChangeTab?: (tab: 'layers' | 'links' | 'files') => void;
+  activeTab?: 'layers' | 'links' | 'files' | 'search';
+  onChangeTab?: (tab: 'layers' | 'links' | 'files' | 'search') => void;
 
   // Standalone Links & Link Folders & Metadata
   standaloneLinks?: StandaloneLink[];
@@ -64,6 +65,15 @@ interface LayersPanelProps {
 
   fileMetadata?: Record<string, FileMetadata>;
   onUpdateFileMetadata?: (fileId: string, updates: Partial<FileMetadata>) => void;
+  shouldFocusSearch?: boolean;
+
+  // Navigation & Scale props for Minimap integration
+  offset?: { x: number; y: number };
+  scale?: number;
+  onPanTo?: (x: number, y: number) => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomToFit?: () => void;
 }
 
 interface UnifiedFileItem {
@@ -127,8 +137,96 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
   onDeleteFileFolder,
   fileMetadata = {},
   onUpdateFileMetadata,
+  shouldFocusSearch = false,
+  offset = { x: 0, y: 0 },
+  scale = 1,
+  onPanTo,
+  onZoomIn,
+  onZoomOut,
+  onZoomToFit,
 }) => {
-  const [currentTab, setCurrentTab] = useState<'layers' | 'links' | 'files'>(initialActiveTab);
+  const [currentTab, setCurrentTab] = useState<'layers' | 'links' | 'files' | 'search'>(initialActiveTab);
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const minimapContainerRef = useRef<HTMLDivElement>(null);
+  const isMinimapDraggingRef = useRef(false);
+
+  const MAP_WIDTH = 290;
+  const MAP_HEIGHT = 140;
+
+  // Compute bounding box of all canvas items for minimap
+  const minimapBounds = useMemo(() => {
+    let minX = -400;
+    let maxX = 1200;
+    let minY = -300;
+    let maxY = 900;
+
+    const items = [
+      ...notes.map((n) => ({ x: n.x, y: n.y, w: n.width || 280, h: n.height || 200 })),
+      ...folders.map((f) => ({ x: f.x, y: f.y, w: f.width || 320, h: f.height || 220 })),
+      ...standaloneLinks.map((l) => ({ x: l.x, y: l.y, w: l.width || 240, h: l.height || 140 })),
+      ...standaloneFiles.map((f) => ({ x: f.x, y: f.y, w: f.width || 240, h: f.height || 140 })),
+    ];
+
+    if (items.length > 0) {
+      minX = Math.min(...items.map((i) => i.x)) - 200;
+      maxX = Math.max(...items.map((i) => i.x + i.w)) + 200;
+      minY = Math.min(...items.map((i) => i.y)) - 200;
+      maxY = Math.max(...items.map((i) => i.y + i.h)) + 200;
+    }
+
+    const w = Math.max(800, maxX - minX);
+    const h = Math.max(600, maxY - minY);
+
+    return { minX, maxX: minX + w, minY, maxY: minY + h, w, h };
+  }, [notes, folders, standaloneLinks, standaloneFiles]);
+
+  const worldToMap = (wx: number, wy: number) => {
+    const mx = ((wx - minimapBounds.minX) / minimapBounds.w) * MAP_WIDTH;
+    const my = ((wy - minimapBounds.minY) / minimapBounds.h) * MAP_HEIGHT;
+    return { x: mx, y: my };
+  };
+
+  const mapToWorld = (mx: number, my: number) => {
+    const wx = minimapBounds.minX + (mx / MAP_WIDTH) * minimapBounds.w;
+    const wy = minimapBounds.minY + (my / MAP_HEIGHT) * minimapBounds.h;
+    return { x: wx, y: wy };
+  };
+
+  const vpWorld = {
+    x: -offset.x / scale,
+    y: -offset.y / scale,
+    w: window.innerWidth / scale,
+    h: window.innerHeight / scale,
+  };
+
+  const vpMapStart = worldToMap(vpWorld.x, vpWorld.y);
+  const vpMapEnd = worldToMap(vpWorld.x + vpWorld.w, vpWorld.y + vpWorld.h);
+  const vpMapW = Math.max(12, vpMapEnd.x - vpMapStart.x);
+  const vpMapH = Math.max(8, vpMapEnd.y - vpMapStart.y);
+
+  const handleMinimapPointerDown = (e: React.PointerEvent) => {
+    if (!minimapContainerRef.current || !onPanTo) return;
+    isMinimapDraggingRef.current = true;
+    const rect = minimapContainerRef.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const targetWorld = mapToWorld(mx, my);
+    onPanTo(targetWorld.x, targetWorld.y);
+  };
+
+  const handleMinimapPointerMove = (e: React.PointerEvent) => {
+    if (!isMinimapDraggingRef.current || !minimapContainerRef.current || !onPanTo) return;
+    const rect = minimapContainerRef.current.getBoundingClientRect();
+    const mx = Math.max(0, Math.min(MAP_WIDTH, e.clientX - rect.left));
+    const my = Math.max(0, Math.min(MAP_HEIGHT, e.clientY - rect.top));
+    const targetWorld = mapToWorld(mx, my);
+    onPanTo(targetWorld.x, targetWorld.y);
+  };
+
+  const handleMinimapPointerUp = () => {
+    isMinimapDraggingRef.current = false;
+  };
 
   useEffect(() => {
     if (initialActiveTab) {
@@ -136,9 +234,24 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
     }
   }, [initialActiveTab]);
 
-  const handleSelectTab = (tab: 'layers' | 'links' | 'files') => {
+  useEffect(() => {
+    if (shouldFocusSearch || currentTab === 'search') {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }, 50);
+    }
+  }, [shouldFocusSearch, currentTab]);
+
+  const handleSelectTab = (tab: 'layers' | 'links' | 'files' | 'search') => {
     setCurrentTab(tab);
     onChangeTab?.(tab);
+    if (tab === 'search') {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }, 50);
+    }
   };
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -354,10 +467,10 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
       return result.filter((l) => {
         const tagsStr = l.tags.map((t) => `#${t}`).join(' ');
         return (
-          l.title.toLowerCase().includes(q) ||
-          l.url.toLowerCase().includes(q) ||
-          l.domain.toLowerCase().includes(q) ||
-          (l.noteTitle && l.noteTitle.toLowerCase().includes(q)) ||
+          (l.title || '').toLowerCase().includes(q) ||
+          (l.url || '').toLowerCase().includes(q) ||
+          (l.domain || '').toLowerCase().includes(q) ||
+          (l.noteTitle || '').toLowerCase().includes(q) ||
           tagsStr.toLowerCase().includes(q)
         );
       });
@@ -459,9 +572,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
     return list.filter((f) => {
       const tagsStr = f.tags.map((t) => `#${t}`).join(' ');
       return (
-        f.name.toLowerCase().includes(q) ||
-        f.type.toLowerCase().includes(q) ||
-        (f.noteTitle && f.noteTitle.toLowerCase().includes(q)) ||
+        (f.name || '').toLowerCase().includes(q) ||
+        (f.type || '').toLowerCase().includes(q) ||
+        (f.noteTitle || '').toLowerCase().includes(q) ||
         tagsStr.toLowerCase().includes(q)
       );
     });
@@ -1303,12 +1416,12 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
       className="fixed right-4 top-20 w-80 bg-[#ede5d8] border border-stone-300 rounded-3xl flex flex-col z-50 overflow-hidden text-sm"
       style={{ height: panelHeight }}
     >
-      {/* Top Header Bar with Tabs: Шари vs Посилання vs Файли */}
+      {/* Top Header Bar with Tabs: Шари vs Посилання vs Файли vs Пошук */}
       <div className="px-3 pt-2.5 pb-2 flex items-center justify-between border-b border-stone-300/50 select-none shrink-0">
         <div className="flex items-center gap-1 bg-[#e2d8c7]/80 p-1 rounded-full border border-stone-300/60">
           <button
             onClick={() => handleSelectTab('layers')}
-            title="Шари"
+            title="Шари та нотатки"
             className={`flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${
               currentTab === 'layers'
                 ? 'bg-stone-300/90 text-stone-900 shadow-xs'
@@ -1319,7 +1432,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
           </button>
           <button
             onClick={() => handleSelectTab('links')}
-            title="Посилання"
+            title="Колекція посилань"
             className={`flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${
               currentTab === 'links'
                 ? 'bg-stone-300/90 text-stone-900 shadow-xs'
@@ -1330,7 +1443,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
           </button>
           <button
             onClick={() => handleSelectTab('files')}
-            title="Файли"
+            title="Файли та вкладення (Скріпка)"
             className={`flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${
               currentTab === 'files'
                 ? 'bg-stone-300/90 text-stone-900 shadow-xs'
@@ -1338,6 +1451,17 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
             }`}
           >
             <Paperclip className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => handleSelectTab('search')}
+            title="Пошук по канвасу"
+            className={`flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${
+              currentTab === 'search'
+                ? 'bg-stone-300/90 text-stone-900 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
+            }`}
+          >
+            <Search className="w-4 h-4" />
           </button>
         </div>
 
@@ -1749,7 +1873,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
             </>
           )}
         </div>
-      ) : (
+      ) : currentTab === 'files' ? (
         /* Files Tab Content */
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-2.5 space-y-0.5 min-h-[200px] scrollbar-none">
           {totalFilesCount === 0 ? (
@@ -1875,6 +1999,240 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
             </>
           )}
         </div>
+      ) : (
+        /* Global Canvas Search Tab View */
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 space-y-3 min-h-[200px] scrollbar-none">
+          {(() => {
+            const q = searchQuery.trim().toLowerCase();
+            
+            // Collect all unique tags
+            const allTags = Array.from(
+              new Set([
+                ...notes.flatMap((n) => n.tags || []),
+                ...unifiedLinks.flatMap((l) => l.tags || []),
+                ...unifiedFiles.flatMap((f) => f.tags || []),
+              ])
+            );
+
+            if (!q) {
+              return (
+                <div className="p-3 text-center text-stone-600 text-xs space-y-3">
+                  <div className="p-2.5 rounded-2xl bg-[#e2d8c7]/60 border border-stone-300/60 text-left space-y-1">
+                    <p className="font-semibold text-stone-900 flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-stone-600" />
+                      <span>Пошук по всьому канвасу</span>
+                    </p>
+                    <p className="text-[11px] text-stone-600 leading-relaxed">
+                      Введіть текст, назву, посилання або #тег у полі нижче для миттєвого пошуку по нотатках, папках та вкладеннях.
+                    </p>
+                  </div>
+
+                  {allTags.length > 0 && (
+                    <div className="text-left space-y-1.5 pt-1">
+                      <p className="text-[11px] font-medium text-stone-700 flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        <span>Доступні теги:</span>
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {allTags.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => setSearchQuery(`#${tag}`)}
+                            className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[#e2d8c7] hover:bg-stone-300 text-stone-800 transition-colors cursor-pointer border border-stone-300/80"
+                          >
+                            #{tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Search Filtered Results
+            const searchNotes = notes.filter((n) => {
+              const tagsStr = (n.tags || []).map((t) => `#${t}`).join(' ');
+              const title = n.title || '';
+              const content = (n.content || '').replace(/<[^>]*>/g, '');
+              return (
+                title.toLowerCase().includes(q) ||
+                content.toLowerCase().includes(q) ||
+                tagsStr.toLowerCase().includes(q)
+              );
+            });
+
+            const searchFolders = folders.filter((f) => f.name.toLowerCase().includes(q));
+
+            const searchLinks = unifiedLinks.filter((l) => {
+              const tagsStr = (l.tags || []).map((t) => `#${t}`).join(' ');
+              return (
+                (l.title || '').toLowerCase().includes(q) ||
+                (l.url || '').toLowerCase().includes(q) ||
+                (l.domain || '').toLowerCase().includes(q) ||
+                (l.noteTitle || '').toLowerCase().includes(q) ||
+                tagsStr.toLowerCase().includes(q)
+              );
+            });
+
+            const searchFiles = unifiedFiles.filter((f) => {
+              const tagsStr = (f.tags || []).map((t) => `#${t}`).join(' ');
+              return (
+                (f.name || '').toLowerCase().includes(q) ||
+                (f.type || '').toLowerCase().includes(q) ||
+                (f.noteTitle || '').toLowerCase().includes(q) ||
+                tagsStr.toLowerCase().includes(q)
+              );
+            });
+
+            const totalMatches =
+              searchNotes.length + searchFolders.length + searchLinks.length + searchFiles.length;
+
+            if (totalMatches === 0) {
+              return (
+                <div className="p-6 text-center text-stone-500 text-xs italic">
+                  Нічого не знайдено за запитом „{searchQuery}”
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {/* Notes */}
+                {searchNotes.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 px-1">
+                      Нотатки ({searchNotes.length})
+                    </p>
+                    <div className="space-y-1">
+                      {searchNotes.map((n) => {
+                        const title = n.title || 'Без назви';
+                        const snippet = (n.content || '').replace(/<[^>]*>/g, '').slice(0, 60);
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              onFocusLayer({ x: n.x, y: n.y });
+                              onSelectLayer(n.id);
+                            }}
+                            className="p-2 rounded-2xl bg-[#e2d8c7]/70 hover:bg-[#e2d8c7] border border-stone-300/70 transition-all cursor-pointer space-y-0.5"
+                          >
+                            <div className="font-semibold text-xs text-stone-900 truncate">
+                              {title}
+                            </div>
+                            {snippet && (
+                              <div className="text-[11px] text-stone-600 line-clamp-1">
+                                {snippet}
+                              </div>
+                            )}
+                            {n.tags && n.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {n.tags.map((t) => (
+                                  <span key={t} className="text-[9px] font-mono text-stone-500">
+                                    #{t}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Folders */}
+                {searchFolders.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 px-1">
+                      Папки ({searchFolders.length})
+                    </p>
+                    <div className="space-y-1">
+                      {searchFolders.map((f) => (
+                        <div
+                          key={f.id}
+                          onClick={() => onFocusLayer({ x: f.x, y: f.y })}
+                          className="p-2 rounded-2xl bg-[#e2d8c7]/70 hover:bg-[#e2d8c7] border border-stone-300/70 transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <FolderIcon className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+                          <span className="font-semibold text-xs text-stone-900 truncate flex-1">
+                            {f.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Links */}
+                {searchLinks.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 px-1">
+                      Посилання ({searchLinks.length})
+                    </p>
+                    <div className="space-y-1">
+                      {searchLinks.map((l) => (
+                        <div
+                          key={l.id}
+                          onClick={() => {
+                            if (l.noteX !== undefined && l.noteY !== undefined) {
+                              onFocusLayer({ x: l.noteX, y: l.noteY });
+                              if (l.noteId) onSelectLayer(l.noteId);
+                            }
+                          }}
+                          className="p-2 rounded-2xl bg-[#e2d8c7]/70 hover:bg-[#e2d8c7] border border-stone-300/70 transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <Link2 className="w-3.5 h-3.5 text-stone-600 shrink-0 -rotate-45" />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-xs text-stone-900 truncate">
+                              {l.title || l.domain}
+                            </div>
+                            <div className="text-[10px] text-stone-500 truncate">{l.url}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Files */}
+                {searchFiles.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 px-1">
+                      Файли ({searchFiles.length})
+                    </p>
+                    <div className="space-y-1">
+                      {searchFiles.map((f) => (
+                        <div
+                          key={f.id}
+                          onClick={() => {
+                            if (f.noteX !== undefined && f.noteY !== undefined) {
+                              onFocusLayer({ x: f.noteX, y: f.noteY });
+                              if (f.noteId) onSelectLayer(f.noteId);
+                            }
+                          }}
+                          className="p-2 rounded-2xl bg-[#e2d8c7]/70 hover:bg-[#e2d8c7] border border-stone-300/70 transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-xs text-stone-900 truncate">
+                              {f.name}
+                            </div>
+                            {f.noteTitle && (
+                              <div className="text-[10px] text-stone-500 truncate">
+                                У нотатці: {f.noteTitle}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
       )}
 
       {/* Search & Action Footer - Single Row */}
@@ -1882,8 +2240,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
         <div className="relative flex-1 flex items-center bg-[#e2d8c7] border border-stone-300 rounded-full px-3.5 py-1.5">
           <Search className="w-4 h-4 text-stone-500 pointer-events-none shrink-0" />
           <input 
+            ref={searchInputRef}
             type="text"
-            placeholder="Пошук..."
+            placeholder="Пошук (словами, назвами, тегами)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-transparent border-none pl-2.5 pr-6 text-xs text-stone-900 placeholder-stone-500 outline-none transition-colors"

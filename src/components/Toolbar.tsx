@@ -4,7 +4,7 @@ import {
   MousePointer2, Plus, Highlighter, 
   Undo2, Redo2, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Underline, ZoomIn, ZoomOut, Layers, List, ListOrdered, CheckSquare, Palette, Type
+  Bold, Italic, Underline, Layers, List, ListOrdered, CheckSquare, Palette, Type
 } from 'lucide-react';
 import { NoteColor, FontFamily, FontSize, TextAlign } from '../types';
 import { FONT_FAMILY_STYLES } from '../utils/theme';
@@ -50,9 +50,13 @@ interface ToolbarProps {
   scale: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onZoomToFit?: () => void;
+  onOpenSearch?: () => void;
   // Layers Panel
   showLayersPanel: boolean;
   setShowLayersPanel: (v: boolean) => void;
+  activePanelTab?: 'layers' | 'links' | 'files';
+  onChangePanelTab?: (tab: 'layers' | 'links' | 'files') => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = React.memo(({
@@ -69,8 +73,12 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   activeNoteAlign = 'left',
   onZoomIn,
   onZoomOut,
+  onZoomToFit,
+  onOpenSearch,
   showLayersPanel,
   setShowLayersPanel,
+  activePanelTab = 'layers',
+  onChangePanelTab,
 }) => {
   const [showHighlightPicker, setShowHighlightPicker] = React.useState(false);
   const [activeHighlightColor, setActiveHighlightColor] = React.useState<string>('#fef08a');
@@ -405,29 +413,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </div>
 
 
-              {/* SCALE / ZOOM CONTROL CENTER (Only icons: - / +) */}
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.92 }}
-                title="Зменшити масштаб (-)"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onZoomOut}
-                className="p-1.5 rounded-full text-stone-600 hover:text-stone-900 transition-all flex-shrink-0"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.92 }}
-                title="Збільшити масштаб (+)"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onZoomIn}
-                className="p-1.5 rounded-full text-stone-600 hover:text-stone-900 transition-all flex-shrink-0"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </motion.button>
-
               {/* UNDO */}
               <motion.button
                 whileHover={{ scale: 1.1 }}
@@ -458,17 +443,17 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
           )}
         </AnimatePresence>
 
-        {/* LAYERS & LINKS & FILES PANEL BUTTON */}
+        {/* LAYERS PANEL TOGGLE BUTTON */}
         <div className="flex items-center gap-1 border-l border-stone-300/60 pl-1.5 ml-0.5">
           <motion.button
             data-layers-toggle="true"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.92 }}
-            title="Панель шарів, посилань та файлів"
+            title="Панель шарів, посилань, файлів та пошуку"
             onClick={() => setShowLayersPanel(!showLayersPanel)}
             className={`p-2 rounded-full transition-all cursor-pointer ${
               showLayersPanel
-                ? 'text-stone-900 font-bold ring-1 ring-stone-400' 
+                ? 'text-stone-900 font-bold ring-1 ring-stone-400 bg-stone-300/50' 
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >

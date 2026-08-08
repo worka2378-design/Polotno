@@ -91,7 +91,7 @@ export function extractUrlDetails(rawUrl: string): LinkDetails {
 
   try {
     const urlObj = new URL(cleanUrl);
-    const host = urlObj.hostname.toLowerCase();
+    const host = (urlObj.hostname || '').toLowerCase();
     domain = host.replace(/^www\./, '');
 
     // Favicon service

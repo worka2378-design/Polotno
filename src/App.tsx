@@ -13,6 +13,7 @@ import { isUrl, createLinkCardHtml, escapeHtml } from './utils/linkUtils';
 import { LayersPanel } from './components/LayersPanel';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { ToastContainer, ToastMessage } from './components/ToastContainer';
+import { Minimap } from './components/Minimap';
 import { saveBoardToDrive, uploadFileToDrive, getCurrentDriveUser } from './utils/googleDrive';
 import { saveAttachmentData, getAllAttachmentsData, deleteAttachmentData } from './utils/attachmentStorage';
 import { AnimatePresence } from 'motion/react';
@@ -31,9 +32,23 @@ export default function App() {
 
   // Notes & Drawing State
   const [notes, setNotes] = useState<Note[]>([]);
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const selectedNoteId = selectedNoteIds.length > 0 ? selectedNoteIds[0] : null;
+
+  const centerOnNote = useCallback((note: { x: number; y: number; width?: number; height?: number }, targetScale = 1.0) => {
+    const w = note.width || 280;
+    const h = note.height || 220;
+    const noteCenterX = note.x + w / 2;
+    const noteCenterY = note.y + h / 2;
+    const newX = window.innerWidth / 2 - noteCenterX * targetScale;
+    const newY = window.innerHeight / 2 - noteCenterY * targetScale;
+    setScale(targetScale);
+    setOffset({ x: newX, y: newY });
+  }, []);
 
   const setSelectedNoteId = useCallback((id: string | null, isShift = false) => {
     if (id === null) {
@@ -45,8 +60,12 @@ export default function App() {
       );
     } else {
       setSelectedNoteIds([id]);
+      const targetNote = notesRef.current.find((n) => n.id === id);
+      if (targetNote) {
+        centerOnNote(targetNote, 1.0);
+      }
     }
-  }, []);
+  }, [centerOnNote]);
 
   // Marquee Box Selection State
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
@@ -76,8 +95,9 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState<boolean>(false);
+  const [shouldFocusSearchPanel, setShouldFocusSearchPanel] = useState<boolean>(false);
   const [showLayersPanel, setShowLayersPanel] = useState<boolean>(false);
-  const [activePanelTab, setActivePanelTab] = useState<'layers' | 'links' | 'files'>('layers');
+  const [activePanelTab, setActivePanelTab] = useState<'layers' | 'links' | 'files' | 'search'>('layers');
   const [standaloneLinks, setStandaloneLinks] = useState<StandaloneLink[]>([]);
   const [linkFolders, setLinkFolders] = useState<LinkFolder[]>([]);
   const [linkMetadata, setLinkMetadata] = useState<Record<string, LinkMetadata>>({});
@@ -654,9 +674,6 @@ export default function App() {
     }
   }, [notes, folders, offset, scale, addToast]);
 
-  const notesRef = useRef(notes);
-  notesRef.current = notes;
-
   // Record History State Snapshot
   const pushHistory = useCallback((newNotes: Note[], newFolders?: Folder[]) => {
     const currentFolders = newFolders !== undefined ? newFolders : foldersRef.current;
@@ -799,8 +816,9 @@ export default function App() {
     const updatedNotes = [...notes, newNote];
     setNotes(updatedNotes);
     setSelectedNoteId(newNote.id);
+    centerOnNote(newNote, 1.0);
     pushHistory(updatedNotes);
-  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos]);
+  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos, centerOnNote, setSelectedNoteId]);
 
   const handleAddPlanner = useCallback((atPosition?: Point) => {
     const centerPt = atPosition || screenToCanvas(
@@ -843,8 +861,9 @@ export default function App() {
     const updatedNotes = [...notes, newNote];
     setNotes(updatedNotes);
     setSelectedNoteId(newNote.id);
+    centerOnNote(newNote, 1.0);
     pushHistory(updatedNotes);
-  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos]);
+  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos, centerOnNote, setSelectedNoteId]);
 
   const handleUpdateNote = useCallback((id: string, updates: Partial<Note>) => {
     setNotes((prev) => {
@@ -1574,14 +1593,76 @@ export default function App() {
   // Active Note details
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
 
-  const handleFocusLayer = (pt: Point) => {
-    // Center point pt in the screen at scale = 1
-    const targetScale = 1;
-    const newX = window.innerWidth / 2 - pt.x * targetScale;
-    const newY = window.innerHeight / 2 - pt.y * targetScale;
+  const handleFocusLayer = useCallback((pt: Point, itemWidth = 280, itemHeight = 200) => {
+    const centerX = pt.x + itemWidth / 2;
+    const centerY = pt.y + itemHeight / 2;
+    const targetScale = 1.0;
+    const newX = window.innerWidth / 2 - centerX * targetScale;
+    const newY = window.innerHeight / 2 - centerY * targetScale;
     setOffset({ x: newX, y: newY });
     setScale(targetScale);
-  };
+  }, []);
+
+  const handlePanToCenter = useCallback((canvasX: number, canvasY: number) => {
+    const newX = window.innerWidth / 2 - canvasX * scale;
+    const newY = window.innerHeight / 2 - canvasY * scale;
+    setOffset({ x: newX, y: newY });
+  }, [scale]);
+
+  const handleZoomToFitAll = useCallback(() => {
+    const allBounds = [
+      ...notes.map((n) => ({ x: n.x, y: n.y, w: n.width || 280, h: n.height || 200 })),
+      ...folders.map((f) => ({ x: f.x, y: f.y, w: f.width || 320, h: f.height || 220 })),
+      ...standaloneLinks.map((l) => ({ x: l.x, y: l.y, w: l.width || 240, h: l.height || 140 })),
+      ...standaloneFiles.map((f) => ({ x: f.x, y: f.y, w: f.width || 240, h: f.height || 140 })),
+    ];
+
+    if (allBounds.length === 0) {
+      setOffset({ x: 0, y: 0 });
+      setScale(1);
+      return;
+    }
+
+    const minX = Math.min(...allBounds.map((b) => b.x));
+    const minY = Math.min(...allBounds.map((b) => b.y));
+    const maxX = Math.max(...allBounds.map((b) => b.x + b.w));
+    const maxY = Math.max(...allBounds.map((b) => b.y + b.h));
+
+    const bboxW = Math.max(100, maxX - minX);
+    const bboxH = Math.max(100, maxY - minY);
+
+    const padding = 120;
+    const scaleX = (window.innerWidth - padding * 2) / bboxW;
+    const scaleY = (window.innerHeight - padding * 2) / bboxH;
+    const targetScale = Math.min(1.2, Math.max(0.15, Math.min(scaleX, scaleY)));
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    const newX = window.innerWidth / 2 - centerX * targetScale;
+    const newY = window.innerHeight / 2 - centerY * targetScale;
+
+    setOffset({ x: newX, y: newY });
+    setScale(targetScale);
+  }, [notes, folders, standaloneLinks, standaloneFiles]);
+
+  const handleOpenSearchPanel = useCallback(() => {
+    setShowLayersPanel(true);
+    setActivePanelTab('search');
+    setShouldFocusSearchPanel(true);
+    setTimeout(() => setShouldFocusSearchPanel(false), 200);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        handleOpenSearchPanel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleOpenSearchPanel]);
 
   const handleAttachFile = (files: FileList) => {
     const selectedNote = selectedNoteId ? notes.find((n) => n.id === selectedNoteId) : null;
@@ -2266,8 +2347,12 @@ export default function App() {
         scale={scale}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
+        onZoomToFit={handleZoomToFitAll}
+        onOpenSearch={handleOpenSearchPanel}
         showLayersPanel={showLayersPanel}
         setShowLayersPanel={setShowLayersPanel}
+        activePanelTab={activePanelTab}
+        onChangePanelTab={setActivePanelTab}
       />
 
       <AnimatePresence>
@@ -2294,6 +2379,7 @@ export default function App() {
             onReorderLayer={handleReorderLayer}
             activeTab={activePanelTab}
             onChangeTab={setActivePanelTab}
+            shouldFocusSearch={shouldFocusSearchPanel}
             standaloneLinks={standaloneLinks}
             onAddStandaloneLink={handleAddStandaloneLink}
             onDeleteStandaloneLink={handleDeleteStandaloneLink}
@@ -2364,6 +2450,20 @@ export default function App() {
         onOpenVaultModal={() => setIsVaultModalOpen(true)}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenImportModal={() => setIsImportModalOpen(true)}
+      />
+
+      {/* Interactive Canvas Minimap Overview */}
+      <Minimap
+        notes={notes}
+        folders={folders}
+        standaloneLinks={standaloneLinks}
+        standaloneFiles={standaloneFiles}
+        offset={offset}
+        scale={scale}
+        onPanTo={handlePanToCenter}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomToFit={handleZoomToFitAll}
       />
 
       {/* Floating Toast Notification Container */}
