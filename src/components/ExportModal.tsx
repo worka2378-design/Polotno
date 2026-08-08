@@ -90,7 +90,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div className="flex-1 min-w-0">
               <span className="text-sm font-medium text-stone-700 group-hover/opt:text-stone-900 transition-colors">Plain JSON Data Export</span>
               <p className="text-xs text-stone-500 group-hover/opt:text-stone-800 mt-0.5 transition-colors">
-                Raw JSON backup containing notes and drawing strokes state.
+                Raw JSON backup containing notes state.
               </p>
             </div>
           </button>

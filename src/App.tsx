@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Note, Stroke, DrawingMode, Point, HistoryState, NoteColor, FontFamily, FontSize, TextAlign, Attachment, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from './types';
+import { Note, Point, HistoryState, NoteColor, FontFamily, FontSize, TextAlign, Attachment, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from './types';
 import { NoteCard } from './components/NoteCard';
 import { Toolbar } from './components/Toolbar';
 import { AuthModal } from './components/AuthModal';
@@ -52,18 +52,12 @@ export default function App() {
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<Point | null>(null);
   const isSelectingMarqueeRef = useRef(false);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
   const [maxZIndex, setMaxZIndex] = useState<number>(10);
   const maxZIndexRef = useRef(maxZIndex);
   maxZIndexRef.current = maxZIndex;
-
-  // Drawing Tools Config
-  const [activeMode, setActiveMode] = useState<DrawingMode>('select');
-  const [currentColor, setCurrentColor] = useState<string>('#ef4444');
-  const strokeWidth = 3;
 
   // Undo / Redo System
   const [history, setHistory] = useState<HistoryState[]>([]);
@@ -419,7 +413,6 @@ export default function App() {
 
   const handleRestoreBoardFromDrive = (restoredData: any) => {
     if (restoredData.notes) setNotes(restoredData.notes);
-    if (restoredData.strokes) setStrokes(restoredData.strokes);
     if (restoredData.canvasOffset) setOffset(restoredData.canvasOffset);
     if (restoredData.canvasScale) setScale(restoredData.canvasScale);
   };
@@ -428,7 +421,7 @@ export default function App() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!autoSaveDrive) return;
-    if (notes.length === 0 && strokes.length === 0) return;
+    if (notes.length === 0) return;
 
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
@@ -438,7 +431,6 @@ export default function App() {
       try {
         const boardData = {
           notes,
-          strokes,
           canvasOffset: offset,
           canvasScale: scale,
           version: 1,
@@ -456,7 +448,7 @@ export default function App() {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [notes, strokes, autoSaveDrive]);
+  }, [notes, autoSaveDrive]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -484,7 +476,6 @@ export default function App() {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed.notes) initialNotes = parsed.notes;
-          if (parsed.strokes) setStrokes(parsed.strokes);
           if (parsed.folders) setFolders(parsed.folders);
           if (parsed.offset) setOffset(parsed.offset);
           if (parsed.scale) setScale(parsed.scale);
@@ -542,7 +533,7 @@ export default function App() {
   const isInitialLoadDoneRef = useRef(false);
   useEffect(() => {
     if (!isInitialLoadDoneRef.current) {
-      if (notes.length > 0 || strokes.length > 0) {
+      if (notes.length > 0) {
         isInitialLoadDoneRef.current = true;
       } else {
         return;
@@ -569,7 +560,6 @@ export default function App() {
 
     const stateToSave = {
       notes,
-      strokes,
       folders,
       offset,
       scale,
@@ -595,7 +585,6 @@ export default function App() {
 
     const lightState = {
       notes: localStorageNotes,
-      strokes: strokes.length > 1000 ? strokes.slice(-1000) : strokes,
       folders,
       offset,
       scale,
@@ -612,7 +601,6 @@ export default function App() {
         ...n,
         attachments: n.attachments?.map((a) => ({ ...a, url: '' })),
       })),
-      strokes: strokes.slice(-300),
       folders,
       offset,
       scale,
@@ -621,30 +609,26 @@ export default function App() {
     if (!trySave(minimalState)) {
       addToast('warning', 'Перевищено ліміт сховища браузера! Рекомендується зробити бекап бордів у файл.', 'Попередження сховища');
     }
-  }, [notes, strokes, folders, offset, scale, addToast]);
+  }, [notes, folders, offset, scale, addToast]);
 
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
-  const strokesRef = useRef(strokes);
-  strokesRef.current = strokes;
-
   // Record History State Snapshot
-  const pushHistory = useCallback((newNotes: Note[], newStrokes: Stroke[], newFolders?: Folder[]) => {
+  const pushHistory = useCallback((newNotes: Note[], newFolders?: Folder[]) => {
     const currentFolders = newFolders !== undefined ? newFolders : foldersRef.current;
     setHistory((prev) => {
       const idx = historyIndexRef.current;
       const currentSnapshot = prev[idx];
       if (currentSnapshot) {
         const notesEqual = JSON.stringify(currentSnapshot.notes) === JSON.stringify(newNotes);
-        const strokesEqual = JSON.stringify(currentSnapshot.strokes) === JSON.stringify(newStrokes);
         const foldersEqual = JSON.stringify(currentSnapshot.folders || []) === JSON.stringify(currentFolders || []);
-        if (notesEqual && strokesEqual && foldersEqual) return prev;
+        if (notesEqual && foldersEqual) return prev;
       }
 
       const updated = prev.slice(0, idx + 1);
       if (updated.length >= 40) updated.shift();
-      const newHistory = [...updated, { notes: newNotes, strokes: newStrokes, folders: currentFolders }];
+      const newHistory = [...updated, { notes: newNotes, folders: currentFolders }];
       setHistoryIndex(newHistory.length - 1);
       return newHistory;
     });
@@ -652,12 +636,12 @@ export default function App() {
 
   const historyDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const commitHistory = useCallback((customNotes?: Note[], customStrokes?: Stroke[], customFolders?: Folder[]) => {
+  const commitHistory = useCallback((customNotes?: Note[], customFolders?: Folder[]) => {
     if (historyDebounceTimerRef.current) {
       clearTimeout(historyDebounceTimerRef.current);
       historyDebounceTimerRef.current = null;
     }
-    pushHistory(customNotes || notesRef.current, customStrokes || strokesRef.current, customFolders || foldersRef.current);
+    pushHistory(customNotes || notesRef.current, customFolders || foldersRef.current);
   }, [pushHistory]);
 
   const commitHistoryDebounced = useCallback(() => {
@@ -665,25 +649,24 @@ export default function App() {
       clearTimeout(historyDebounceTimerRef.current);
     }
     historyDebounceTimerRef.current = setTimeout(() => {
-      pushHistory(notesRef.current, strokesRef.current, foldersRef.current);
+      pushHistory(notesRef.current, foldersRef.current);
       historyDebounceTimerRef.current = null;
     }, 700);
   }, [pushHistory]);
 
   const isHistoryInitializedRef = useRef(false);
   useEffect(() => {
-    if (!isHistoryInitializedRef.current && (notes.length > 0 || strokes.length > 0 || folders.length > 0)) {
-      setHistory([{ notes, strokes, folders }]);
+    if (!isHistoryInitializedRef.current && (notes.length > 0 || folders.length > 0)) {
+      setHistory([{ notes, folders }]);
       setHistoryIndex(0);
       isHistoryInitializedRef.current = true;
     }
-  }, [notes, strokes, folders, setHistoryIndex]);
+  }, [notes, folders, setHistoryIndex]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
       const previousState = history[historyIndex - 1];
       setNotes(previousState.notes);
-      setStrokes(previousState.strokes);
       if (previousState.folders) setFolders(previousState.folders);
       setHistoryIndex(historyIndex - 1);
     }
@@ -693,7 +676,6 @@ export default function App() {
     if (historyIndex < history.length - 1) {
       const nextState = history[historyIndex + 1];
       setNotes(nextState.notes);
-      setStrokes(nextState.strokes);
       if (nextState.folders) setFolders(nextState.folders);
       setHistoryIndex(historyIndex + 1);
     }
@@ -774,8 +756,8 @@ export default function App() {
     const updatedNotes = [...notes, newNote];
     setNotes(updatedNotes);
     setSelectedNoteId(newNote.id);
-    pushHistory(updatedNotes, strokes);
-  }, [offset, scale, maxZIndex, notes, strokes, pushHistory, getNonOverlappingPos]);
+    pushHistory(updatedNotes);
+  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos]);
 
   const handleAddPlanner = useCallback((atPosition?: Point) => {
     const centerPt = atPosition || screenToCanvas(
@@ -818,8 +800,8 @@ export default function App() {
     const updatedNotes = [...notes, newNote];
     setNotes(updatedNotes);
     setSelectedNoteId(newNote.id);
-    pushHistory(updatedNotes, strokes);
-  }, [offset, scale, maxZIndex, notes, strokes, pushHistory, getNonOverlappingPos]);
+    pushHistory(updatedNotes);
+  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos]);
 
   const handleUpdateNote = useCallback((id: string, updates: Partial<Note>) => {
     setNotes((prev) => {
@@ -872,12 +854,11 @@ export default function App() {
       }
     });
 
-    // Auto-fit folder bounds so all contained notes & strokes stay cleanly enclosed with harmonious padding
+    // Auto-fit folder bounds so all contained notes stay cleanly enclosed with harmonious padding
     updatedFolders = updatedFolders.map((folder) => {
       const folderNotes = updatedNotes.filter((n) => n.folderId === folder.id && !n.hidden);
-      const folderStrokes = strokesRef.current.filter((s) => s.folderId === folder.id && !s.hidden);
 
-      if (folderNotes.length === 0 && folderStrokes.length === 0) return folder;
+      if (folderNotes.length === 0) return folder;
 
       let minX = Infinity;
       let minY = Infinity;
@@ -891,15 +872,6 @@ export default function App() {
         if (n.y < minY) minY = n.y;
         if (n.x + nw > maxX) maxX = n.x + nw;
         if (n.y + nh > maxY) maxY = n.y + nh;
-      });
-
-      folderStrokes.forEach((s) => {
-        s.points.forEach((p) => {
-          if (p.x < minX) minX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y > maxY) maxY = p.y;
-        });
       });
 
       if (minX === Infinity) return folder;
@@ -940,7 +912,7 @@ export default function App() {
     if (notesChanged || foldersChanged) {
       setNotes(updatedNotes);
       setFolders(updatedFolders);
-      commitHistory(updatedNotes, strokesRef.current, updatedFolders);
+      commitHistory(updatedNotes, updatedFolders);
     }
   }, [commitHistory]);
 
@@ -952,7 +924,7 @@ export default function App() {
   const handleDeleteNote = useCallback((id: string) => {
     setNotes((prev) => {
       const updated = prev.filter((n) => n.id !== id);
-      pushHistory(updated, strokesRef.current);
+      pushHistory(updated);
       return updated;
     });
     setSelectedNoteId((prev) => (prev === id ? null : prev));
@@ -978,7 +950,7 @@ export default function App() {
 
       const updated = [...prev, dup];
       setSelectedNoteId(dup.id);
-      pushHistory(updated, strokesRef.current);
+      pushHistory(updated);
       return updated;
     });
   }, [pushHistory]);
@@ -1012,7 +984,7 @@ export default function App() {
     };
     setFolders((prev) => {
       const updated = [...prev, newFolder];
-      commitHistory(notesRef.current, strokesRef.current, updated);
+      commitHistory(notesRef.current, updated);
       return updated;
     });
   }, [commitHistory]);
@@ -1020,27 +992,24 @@ export default function App() {
   const handleUpdateFolder = useCallback((id: string, updates: Partial<Folder>) => {
     setFolders((prev) => {
       const updated = prev.map((f) => (f.id === id ? { ...f, ...updates } : f));
-      commitHistory(notesRef.current, strokesRef.current, updated);
+      commitHistory(notesRef.current, updated);
       return updated;
     });
   }, [commitHistory]);
 
   const handleDeleteFolder = useCallback((id: string) => {
     const updatedNotes = notesRef.current.map((n) => (n.folderId === id ? { ...n, folderId: undefined } : n));
-    const updatedStrokes = strokesRef.current.map((s) => (s.folderId === id ? { ...s, folderId: undefined } : s));
     const updatedFolders = foldersRef.current.filter((f) => f.id !== id);
 
     setNotes(updatedNotes);
-    setStrokes(updatedStrokes);
     setFolders(updatedFolders);
-    commitHistory(updatedNotes, updatedStrokes, updatedFolders);
+    commitHistory(updatedNotes, updatedFolders);
   }, [commitHistory]);
 
   const handleArrangeFolderGrid = useCallback((targetFolderId: string) => {
     const folderNotes = notesRef.current.filter((n) => n.folderId === targetFolderId);
-    const folderStrokes = strokesRef.current.filter((s) => s.folderId === targetFolderId);
 
-    if (folderNotes.length === 0 && folderStrokes.length === 0) return;
+    if (folderNotes.length === 0) return;
 
     let anchorX = Infinity;
     let anchorY = Infinity;
@@ -1048,15 +1017,6 @@ export default function App() {
     folderNotes.forEach((n) => {
       if (n.x < anchorX) anchorX = n.x;
       if (n.y < anchorY) anchorY = n.y;
-    });
-
-    folderStrokes.forEach((s) => {
-      if (s.points.length > 0) {
-        const minX = Math.min(...s.points.map((p) => p.x));
-        const minY = Math.min(...s.points.map((p) => p.y));
-        if (minX < anchorX) anchorX = minX;
-        if (minY < anchorY) anchorY = minY;
-      }
     });
 
     if (anchorX === Infinity) anchorX = 100;
@@ -1079,25 +1039,6 @@ export default function App() {
       itemIdx++;
     });
 
-    const strokePosMap = new Map<string, Point[]>();
-    folderStrokes.forEach((s) => {
-      if (s.points.length > 0) {
-        const col = itemIdx % COLS;
-        const row = Math.floor(itemIdx / COLS);
-        const targetX = anchorX + col * GAP_X;
-        const targetY = anchorY + row * GAP_Y;
-
-        const minX = Math.min(...s.points.map((p) => p.x));
-        const minY = Math.min(...s.points.map((p) => p.y));
-        const dx = targetX - minX;
-        const dy = targetY - minY;
-
-        const newPoints = s.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
-        strokePosMap.set(s.id, newPoints);
-        itemIdx++;
-      }
-    });
-
     let updatedNotes = notesRef.current;
     if (notePosMap.size > 0) {
       updatedNotes = notesRef.current.map((n) => {
@@ -1105,15 +1046,6 @@ export default function App() {
         return pos ? { ...n, ...pos } : n;
       });
       setNotes(updatedNotes);
-    }
-
-    let updatedStrokes = strokesRef.current;
-    if (strokePosMap.size > 0) {
-      updatedStrokes = strokesRef.current.map((s) => {
-        const newPoints = strokePosMap.get(s.id);
-        return newPoints ? { ...s, points: newPoints } : s;
-      });
-      setStrokes(updatedStrokes);
     }
 
     const gridCols = Math.min(COLS, Math.max(1, folderNotes.length));
@@ -1126,22 +1058,18 @@ export default function App() {
     );
     setFolders(updatedFolders);
 
-    commitHistory(updatedNotes, updatedStrokes, updatedFolders);
+    commitHistory(updatedNotes, updatedFolders);
   }, [commitHistory]);
 
-  const handleMoveLayerToFolder = useCallback((layerId: string, layerType: 'note' | 'stroke', folderId: string | null) => {
+  const handleMoveLayerToFolder = useCallback((layerId: string, layerType: 'note', folderId: string | null) => {
     let updatedNotes = notesRef.current;
-    let updatedStrokes = strokesRef.current;
 
     if (layerType === 'note') {
       updatedNotes = notesRef.current.map((n) => (n.id === layerId ? { ...n, folderId: folderId || undefined } : n));
       setNotes(updatedNotes);
-    } else {
-      updatedStrokes = strokesRef.current.map((s) => (s.id === layerId ? { ...s, folderId: folderId || undefined } : s));
-      setStrokes(updatedStrokes);
     }
 
-    commitHistory(updatedNotes, updatedStrokes, foldersRef.current);
+    commitHistory(updatedNotes, foldersRef.current);
 
     if (folderId) {
       setTimeout(() => {
@@ -1155,7 +1083,6 @@ export default function App() {
     folderId: string,
     startFolderPos: { x: number; y: number },
     startNotesPos: Array<{ id: string; x: number; y: number }>,
-    startStrokesPos: Array<{ id: string; points: Point[] }>,
     totalDx: number,
     totalDy: number
   ) => {
@@ -1169,17 +1096,8 @@ export default function App() {
       return pos ? { ...n, ...pos } : n;
     });
 
-    const strokesMap = new Map(
-      startStrokesPos.map((s) => [s.id, s.points.map((p) => ({ x: p.x + totalDx, y: p.y + totalDy }))])
-    );
-    const updatedStrokes = strokesRef.current.map((s) => {
-      const newPoints = strokesMap.get(s.id);
-      return newPoints ? { ...s, points: newPoints } : s;
-    });
-
     setFolders(updatedFolders);
     setNotes(updatedNotes);
-    setStrokes(updatedStrokes);
   }, []);
 
   const handleResizeFrame = useCallback((folderId: string, newWidth: number, newHeight: number) => {
@@ -1187,7 +1105,6 @@ export default function App() {
       prev.map((f) => {
         if (f.id !== folderId) return f;
         const folderNotes = notesRef.current.filter((n) => n.folderId === folderId && !n.hidden);
-        const folderStrokes = strokesRef.current.filter((s) => s.folderId === folderId && !s.hidden);
 
         let maxRight = (f.x ?? 100) + 200;
         let maxBottom = (f.y ?? 100) + 160;
@@ -1197,13 +1114,6 @@ export default function App() {
           const nh = n.height || 220;
           if (n.x + nw > maxRight) maxRight = n.x + nw;
           if (n.y + nh > maxBottom) maxBottom = n.y + nh;
-        });
-
-        folderStrokes.forEach((s) => {
-          s.points.forEach((p) => {
-            if (p.x > maxRight) maxRight = p.x;
-            if (p.y > maxBottom) maxBottom = p.y;
-          });
         });
 
         const minW = Math.max(300, maxRight - (f.x ?? 100) + 32);
@@ -1219,7 +1129,7 @@ export default function App() {
   }, []);
 
   const handleMoveFrameEnd = useCallback(() => {
-    commitHistory(notesRef.current, strokesRef.current, foldersRef.current);
+    commitHistory(notesRef.current, foldersRef.current);
   }, [commitHistory]);
 
   const handleCreateFrameFromSelection = useCallback((targetNoteIds?: string[]) => {
@@ -1288,7 +1198,7 @@ export default function App() {
       addToast('info', `Створено нову ${newFolder.name}`);
     }
 
-    commitHistory(updatedNotes, strokesRef.current, updatedFolders);
+    commitHistory(updatedNotes, updatedFolders);
   }, [selectedNoteIds, offset, scale, commitHistory, addToast]);
 
   const handleAddNoteToFrame = useCallback((folderId: string, defaultX: number, defaultY: number) => {
@@ -1315,10 +1225,10 @@ export default function App() {
     const updated = [...notesRef.current, newNote];
     setNotes(updated);
     setSelectedNoteIds([newNote.id]);
-    commitHistory(updated, strokesRef.current, foldersRef.current);
+    commitHistory(updated, foldersRef.current);
   }, [commitHistory]);
 
-  const handleMoveLayerStep = useCallback((id: string, type: 'note' | 'stroke', direction: 'up' | 'down') => {
+  const handleMoveLayerStep = useCallback((id: string, type: 'note', direction: 'up' | 'down') => {
     if (type === 'note') {
       setNotes((prev) => {
         const note = prev.find((n) => n.id === id);
@@ -1329,19 +1239,7 @@ export default function App() {
           setMaxZIndex(newZ);
         }
         const updated = prev.map((n) => (n.id === id ? { ...n, zIndex: newZ } : n));
-        commitHistory(updated, strokesRef.current, foldersRef.current);
-        return updated;
-      });
-    } else {
-      setStrokes((prev) => {
-        const idx = prev.findIndex((s) => s.id === id);
-        if (idx === -1) return prev;
-        const newIdx = direction === 'up' ? idx + 1 : idx - 1;
-        if (newIdx < 0 || newIdx >= prev.length) return prev;
-        const updated = [...prev];
-        const [moved] = updated.splice(idx, 1);
-        updated.splice(newIdx, 0, moved);
-        commitHistory(notesRef.current, updated, foldersRef.current);
+        commitHistory(updated, foldersRef.current);
         return updated;
       });
     }
@@ -1349,9 +1247,9 @@ export default function App() {
 
   const handleReorderLayer = useCallback((
     sourceId: string,
-    sourceType: 'note' | 'stroke',
+    sourceType: 'note',
     targetId: string,
-    targetType: 'note' | 'stroke'
+    targetType: 'note'
   ) => {
     if (sourceId === targetId) return;
 
@@ -1371,27 +1269,7 @@ export default function App() {
           if (n.id === targetId) return { ...n, zIndex: newTZ };
           return n;
         });
-        commitHistory(updated, strokesRef.current, foldersRef.current);
-        return updated;
-      });
-    } else if (sourceType === 'stroke' && targetType === 'stroke') {
-      setStrokes((prev) => {
-        const sIdx = prev.findIndex((s) => s.id === sourceId);
-        const tIdx = prev.findIndex((s) => s.id === targetId);
-        if (sIdx === -1 || tIdx === -1) return prev;
-        const updated = [...prev];
-        const [moved] = updated.splice(sIdx, 1);
-        updated.splice(tIdx, 0, moved);
-        commitHistory(notesRef.current, updated, foldersRef.current);
-        return updated;
-      });
-    } else if (sourceType === 'note' && targetType === 'stroke') {
-      setNotes((prev) => {
-        const sNote = prev.find((n) => n.id === sourceId);
-        if (!sNote) return prev;
-        const newZ = (sNote.zIndex || 0) + 1;
-        const updated = prev.map((n) => (n.id === sourceId ? { ...n, zIndex: newZ } : n));
-        commitHistory(updated, strokesRef.current, foldersRef.current);
+        commitHistory(updated, foldersRef.current);
         return updated;
       });
     }
@@ -1657,41 +1535,6 @@ export default function App() {
   // Active Note details
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
 
-  // Stroke Actions
-  const handleAddStroke = (stroke: Stroke) => {
-    const updated = [...strokes, stroke];
-    setStrokes(updated);
-    pushHistory(notes, updated);
-  };
-
-  const handleDeleteStroke = (strokeId: string) => {
-    const updated = strokes.filter((s) => s.id !== strokeId);
-    setStrokes(updated);
-    pushHistory(notes, updated);
-  };
-
-  const handleUpdateStroke = (id: string, updates: Partial<Stroke>) => {
-    setStrokes((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
-  };
-
-  const handleDuplicateStroke = (id: string) => {
-    const target = strokes.find((s) => s.id === id);
-    if (!target) return;
-    
-    // Offset points slightly for duplicate
-    const newPoints = target.points.map(p => ({ x: p.x + 20, y: p.y + 20 }));
-    
-    const dup: Stroke = {
-      ...target,
-      id: 'stroke_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
-      points: newPoints,
-    };
-    
-    const updated = [...strokes, dup];
-    setStrokes(updated);
-    pushHistory(notes, updated);
-  };
-
   const handleFocusLayer = (pt: Point) => {
     // Center point pt in the screen at scale = 1
     const targetScale = 1;
@@ -1736,7 +1579,7 @@ export default function App() {
                   }
                 : n
             );
-            pushHistory(updatedNotes, strokes);
+            pushHistory(updatedNotes);
             return updatedNotes;
           });
         };
@@ -1805,7 +1648,7 @@ export default function App() {
             };
 
             const updated = [...prev, newFileItem];
-            pushHistory(updated, strokes);
+            pushHistory(updated);
             return updated;
           });
           setSelectedNoteId(newFileId);
@@ -1827,7 +1670,7 @@ export default function App() {
       return;
     }
 
-    if (e.button === 0 && !e.altKey && activeMode === 'select' && e.target === canvasRef.current) {
+    if (e.button === 0 && !e.altKey && e.target === canvasRef.current) {
       const pt = screenToCanvas(e.clientX, e.clientY, offset, scale);
       setSelectionStart(pt);
       setSelectionEnd(pt);
@@ -1904,7 +1747,7 @@ export default function App() {
         setSelectedNoteId(null);
       }
 
-      if (e.target === canvasRef.current || activeMode === 'select') {
+      if (e.target === canvasRef.current) {
         setIsPanning(true);
         setPanStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
         setTouchPinchStartDist(null);
@@ -1959,7 +1802,7 @@ export default function App() {
   };
 
   const handleDoubleClickCanvas = (e: React.MouseEvent) => {
-    if (e.target === canvasRef.current && activeMode === 'select') {
+    if (e.target === canvasRef.current) {
       const pt = screenToCanvas(e.clientX, e.clientY, offset, scale);
       handleAddNote(pt);
     }
@@ -2014,25 +1857,11 @@ export default function App() {
       }
 
       switch (e.key.toLowerCase()) {
-        case 'v':
-          setActiveMode('select');
-          break;
         case 'n':
           handleAddNote();
-          setActiveMode('select');
-          break;
-        case 'p':
-          setActiveMode('pen');
-          break;
-        case 'l':
-          setActiveMode('line');
-          break;
-        case 'a':
-          setActiveMode('arrow');
           break;
         case 'escape':
           setSelectedNoteId(null);
-          setActiveMode('select');
           break;
       }
     };
@@ -2092,20 +1921,19 @@ export default function App() {
         const updatedNotes = [...notes, newNote];
         setNotes(updatedNotes);
         setSelectedNoteId(newNote.id);
-        pushHistory(updatedNotes, strokes);
+        pushHistory(updatedNotes);
       }
     };
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [offset, scale, maxZIndex, notes, strokes, pushHistory, getNonOverlappingPos]);
+  }, [offset, scale, maxZIndex, notes, pushHistory, getNonOverlappingPos]);
 
   // Export handlers
   const handleExportPlainJSON = () => {
     const payload = {
       version: 1,
       notes,
-      strokes,
       canvasOffset: offset,
       canvasScale: scale,
     };
@@ -2122,7 +1950,6 @@ export default function App() {
     const payload = {
       version: 1,
       notes,
-      strokes,
       canvasOffset: offset,
       canvasScale: scale,
     };
@@ -2192,19 +2019,16 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportData = (payload: { notes?: Note[]; strokes?: Stroke[]; canvasOffset?: Point; canvasScale?: number }, mode: 'replace' | 'merge') => {
+  const handleImportData = (payload: { notes?: Note[]; canvasOffset?: Point; canvasScale?: number }, mode: 'replace' | 'merge') => {
     const newNotes = Array.isArray(payload.notes) ? payload.notes : [];
-    const newStrokes = Array.isArray(payload.strokes) ? payload.strokes : [];
 
     if (mode === 'replace') {
       setNotes(newNotes);
-      setStrokes(newStrokes);
       if (payload.canvasOffset) setOffset(payload.canvasOffset);
       if (payload.canvasScale) setScale(payload.canvasScale);
-      commitHistory(newNotes, newStrokes);
+      commitHistory(newNotes);
     } else {
       const existingNoteIds = new Set(notes.map((n) => n.id));
-      const existingStrokeIds = new Set(strokes.map((s) => s.id));
 
       const mergedNotes = [
         ...notes,
@@ -2216,19 +2040,8 @@ export default function App() {
         })),
       ];
 
-      const mergedStrokes = [
-        ...strokes,
-        ...newStrokes.map((s) => ({
-          ...s,
-          id: existingStrokeIds.has(s.id)
-            ? 'stroke_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)
-            : s.id,
-        })),
-      ];
-
       setNotes(mergedNotes);
-      setStrokes(mergedStrokes);
-      commitHistory(mergedNotes, mergedStrokes);
+      commitHistory(mergedNotes);
     }
   };
 
@@ -2288,7 +2101,6 @@ export default function App() {
           {/* Folders and their contained notes rendered in isolated stacking sequence */}
           {folders.map((folder, folderIdx) => {
             const containedNotes = notes.filter((n) => n.folderId === folder.id);
-            const containedStrokes = strokes.filter((s) => s.folderId === folder.id);
             const folderZIndex = (folderIdx + 1) * 1000;
 
             return (
@@ -2300,7 +2112,6 @@ export default function App() {
                 <FrameCard
                   folder={folder}
                   containedNotes={containedNotes}
-                  containedStrokes={containedStrokes}
                   scale={scale}
                   isSelected={selectedFolderId === folder.id || (containedNotes.length > 0 && containedNotes.some((n) => selectedNoteIds.includes(n.id)))}
                   onSelect={(folderId) => {
@@ -2394,10 +2205,6 @@ export default function App() {
 
       {/* Sleek Floating Dock / Unified Toolbar */}
       <Toolbar
-        activeMode={activeMode}
-        setActiveMode={setActiveMode}
-        currentColor={currentColor}
-        setCurrentColor={setCurrentColor}
         onAddNote={() => handleAddNote()}
         onAddPlanner={() => handleAddPlanner()}
         onAttachFile={handleAttachFile}
@@ -2431,7 +2238,6 @@ export default function App() {
         {showLayersPanel && (
           <LayersPanel
             notes={notes}
-            strokes={strokes}
             folders={folders}
             selectedNoteId={selectedNoteId}
             onOpenDriveModal={() => setIsDriveModalOpen(true)}
@@ -2440,14 +2246,8 @@ export default function App() {
               handleUpdateNote(id, updates);
               commitHistory();
             }}
-            onUpdateStroke={(id, updates) => {
-              handleUpdateStroke(id, updates);
-              commitHistory();
-            }}
             onDuplicateNote={handleDuplicateNote}
-            onDuplicateStroke={handleDuplicateStroke}
             onDeleteNote={handleDeleteNote}
-            onDeleteStroke={handleDeleteStroke}
             onFocusLayer={handleFocusLayer}
             onClose={() => setShowLayersPanel(false)}
             onCreateFolder={handleCreateFolder}
@@ -2514,7 +2314,6 @@ export default function App() {
         onClose={() => setIsDriveModalOpen(false)}
         boardState={{
           notes,
-          strokes,
           offset,
           scale,
         }}

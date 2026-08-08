@@ -7,23 +7,19 @@ import {
   Folder as FolderIcon, FolderOpen, FolderPlus, ChevronRight, ChevronDown, FolderOutput,
   LayoutGrid, Tag, Sun, Moon, Cloud, Link2, Plus, ExternalLink, MousePointer2, Layers, Film, Download, Upload, HardDrive, Paperclip
 } from 'lucide-react';
-import { Note, Stroke, Point, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from '../types';
-import { NOTE_COLOR_CLASSES, COLOR_PALETTE_ITEMS, DRAWING_PALETTE } from '../utils/theme';
+import { Note, Point, Folder, StandaloneLink, LinkFolder, LinkMetadata, StandaloneFile, FileFolder, FileMetadata } from '../types';
+import { NOTE_COLOR_CLASSES, COLOR_PALETTE_ITEMS } from '../utils/theme';
 import { countLinksInContent, extractLinksFromContent, extractUrlDetails, isUrl } from '../utils/linkUtils';
 
 interface LayersPanelProps {
   notes: Note[];
-  strokes: Stroke[];
   folders: Folder[];
   selectedNoteId: string | null;
   onOpenDriveModal?: () => void;
   onSelectLayer: (id: string | null) => void;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
-  onUpdateStroke: (id: string, updates: Partial<Stroke>) => void;
   onDuplicateNote: (id: string) => void;
-  onDuplicateStroke: (id: string) => void;
   onDeleteNote: (id: string) => void;
-  onDeleteStroke: (id: string) => void;
   onFocusLayer: (pt: Point) => void;
   onClose: () => void;
 
@@ -31,12 +27,12 @@ interface LayersPanelProps {
   onCreateFolder: (name?: string) => void;
   onUpdateFolder: (id: string, updates: Partial<Folder>) => void;
   onDeleteFolder: (id: string) => void;
-  onMoveLayerToFolder: (layerId: string, layerType: 'note' | 'stroke', folderId: string | null) => void;
+  onMoveLayerToFolder: (layerId: string, layerType: 'note', folderId: string | null) => void;
   onArrangeFolderGrid?: (folderId: string) => void;
 
   // Layer Reordering
-  onMoveLayerStep: (id: string, type: 'note' | 'stroke', direction: 'up' | 'down') => void;
-  onReorderLayer: (sourceId: string, sourceType: 'note' | 'stroke', targetId: string, targetType: 'note' | 'stroke') => void;
+  onMoveLayerStep: (id: string, type: 'note', direction: 'up' | 'down') => void;
+  onReorderLayer: (sourceId: string, sourceType: 'note', targetId: string, targetType: 'note') => void;
 
   // Active Tab
   activeTab?: 'layers' | 'links' | 'files';
@@ -107,22 +103,17 @@ interface UnifiedFileItem {
 }
 
 type LayerItem = 
-  | { type: 'note'; item: Note }
-  | { type: 'stroke'; item: Stroke };
+  | { type: 'note'; item: Note };
 
 export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
   notes,
-  strokes,
   folders,
   selectedNoteId,
   onOpenDriveModal,
   onSelectLayer,
   onUpdateNote,
-  onUpdateStroke,
   onDuplicateNote,
-  onDuplicateStroke,
   onDeleteNote,
-  onDeleteStroke,
   onFocusLayer,
   onClose,
   onCreateFolder,
@@ -257,21 +248,13 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
     const current = layer.item.tags || [];
     if (current.includes(clean)) return;
     const updated = [...current, clean];
-    if (layer.type === 'note') {
-      onUpdateNote(layer.item.id, { tags: updated });
-    } else {
-      onUpdateStroke(layer.item.id, { tags: updated });
-    }
+    onUpdateNote(layer.item.id, { tags: updated });
   };
 
   const handleRemoveTagFromLayer = (layer: LayerItem, tagToRemove: string) => {
     const current = layer.item.tags || [];
     const updated = current.filter((t) => t !== tagToRemove);
-    if (layer.type === 'note') {
-      onUpdateNote(layer.item.id, { tags: updated });
-    } else {
-      onUpdateStroke(layer.item.id, { tags: updated });
-    }
+    onUpdateNote(layer.item.id, { tags: updated });
   };
 
   const handleAddTagToFolder = (folder: Folder, tagInput: string) => {
@@ -293,7 +276,6 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
   const layers = useMemo(() => {
     const allLayers: LayerItem[] = [
       ...notes.map((n) => ({ type: 'note' as const, item: n })),
-      ...strokes.map((s) => ({ type: 'stroke' as const, item: s })),
     ];
 
     allLayers.sort((a, b) => {
@@ -301,27 +283,27 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
       const bPinned = b.item.pinned ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
 
-      const aZ = a.type === 'note' ? a.item.zIndex || 0 : 0;
-      const bZ = b.type === 'note' ? b.item.zIndex || 0 : 0;
+      const aZ = a.item.zIndex || 0;
+      const bZ = b.item.zIndex || 0;
       if (aZ !== bZ) return bZ - aZ;
 
-      const aTime = a.type === 'note' ? a.item.createdAt || a.item.updatedAt || 0 : 0;
-      const bTime = b.type === 'note' ? b.item.createdAt || b.item.updatedAt || 0 : 0;
+      const aTime = a.item.createdAt || a.item.updatedAt || 0;
+      const bTime = b.item.createdAt || b.item.updatedAt || 0;
       return bTime - aTime;
     });
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return allLayers.filter((layer) => {
-        const title = layer.item.title || (layer.type === 'note' ? (layer.item.attachments?.[0]?.name || 'Text Note') : 'Drawing');
-        const content = layer.type === 'note' ? (layer.item.content || '').replace(/<[^>]+>/g, '') : '';
+        const title = layer.item.title || layer.item.attachments?.[0]?.name || 'Text Note';
+        const content = (layer.item.content || '').replace(/<[^>]+>/g, '');
         const tagsStr = (layer.item.tags || []).map((t) => `#${t}`).join(' ');
         return title.toLowerCase().includes(q) || content.toLowerCase().includes(q) || tagsStr.toLowerCase().includes(q);
       });
     }
 
     return allLayers;
-  }, [notes, strokes, searchQuery]);
+  }, [notes, searchQuery]);
 
   const unassignedLayers = useMemo(() => {
     return layers.filter((l) => !l.item.folderId);
@@ -582,20 +564,6 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
 
   const renderLayerIcon = (layer: LayerItem) => {
     const iconClass = "w-4 h-4 text-stone-600 group-hover:text-stone-900 transition-colors";
-    if (layer.type === 'stroke') {
-      switch (layer.item.mode) {
-        case 'highlighter':
-          return <Highlighter className={iconClass} />;
-        case 'line':
-          return <Minus className={iconClass} />;
-        case 'arrow':
-          return <MoveRight className={iconClass} />;
-        case 'eraser':
-          return <Eraser className={iconClass} />;
-        default:
-          return <PenTool className={iconClass} />;
-      }
-    }
 
     const note = layer.item;
     if (note.attachments && note.attachments.length > 0) {
@@ -623,22 +591,16 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
 
   const handleStartRenameLayer = (layer: LayerItem) => {
     setEditingLayerId(layer.item.id);
-    let generatedTitle = layer.type === 'note' ? 'Text Note' : 'Drawing';
-    if (layer.type === 'note') {
-      const rawText = (layer.item.content || '').replace(/<[^>]+>/g, '').trim();
-      if (rawText.length > 0) {
-        generatedTitle = rawText.substring(0, 20) + (rawText.length > 20 ? '...' : '');
-      }
+    let generatedTitle = 'Text Note';
+    const rawText = (layer.item.content || '').replace(/<[^>]+>/g, '').trim();
+    if (rawText.length > 0) {
+      generatedTitle = rawText.substring(0, 20) + (rawText.length > 20 ? '...' : '');
     }
     setEditName(layer.item.title || generatedTitle);
   };
 
   const handleCommitRenameLayer = (layer: LayerItem) => {
-    if (layer.type === 'note') {
-      onUpdateNote(layer.item.id, { title: editName.trim() });
-    } else {
-      onUpdateStroke(layer.item.id, { title: editName.trim() });
-    }
+    onUpdateNote(layer.item.id, { title: editName.trim() });
     setEditingLayerId(null);
   };
 
@@ -656,26 +618,11 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
 
   const handleFocus = (layer: LayerItem) => {
     onSelectLayer(layer.item.id);
-    if (layer.type === 'note') {
-      const pt = {
-        x: layer.item.x + layer.item.width / 2,
-        y: layer.item.y + layer.item.height / 2
-      };
-      onFocusLayer(pt);
-    } else {
-      if (layer.item.points.length > 0) {
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        layer.item.points.forEach(p => {
-          if (p.x < minX) minX = p.x;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.y > maxY) maxY = p.y;
-        });
-        const pt = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-        onFocusLayer(pt);
-      }
-    }
+    const pt = {
+      x: layer.item.x + layer.item.width / 2,
+      y: layer.item.y + layer.item.height / 2
+    };
+    onFocusLayer(pt);
   };
 
   const handleDragStart = (e: React.DragEvent, layer: LayerItem) => {
@@ -943,11 +890,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
                 onClick={(e) => {
                   e.stopPropagation();
                   const isPinned = layer.item.pinned;
-                  if (layer.type === 'note') {
-                    onUpdateNote(layer.item.id, { pinned: !isPinned });
-                  } else {
-                    onUpdateStroke(layer.item.id, { pinned: !isPinned });
-                  }
+                  onUpdateNote(layer.item.id, { pinned: !isPinned });
                   setActiveMenuLayerId(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 rounded-full text-stone-700 hover:text-stone-900 transition-colors text-left cursor-pointer"
@@ -959,11 +902,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (layer.type === 'note') {
-                    onUpdateNote(layer.item.id, { locked: !isLocked });
-                  } else {
-                    onUpdateStroke(layer.item.id, { locked: !isLocked });
-                  }
+                  onUpdateNote(layer.item.id, { locked: !isLocked });
                   setActiveMenuLayerId(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 rounded-full text-stone-700 hover:text-stone-900 transition-colors text-left cursor-pointer"
@@ -975,11 +914,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (layer.type === 'note') {
-                    onUpdateNote(layer.item.id, { hidden: !isHidden });
-                  } else {
-                    onUpdateStroke(layer.item.id, { hidden: !isHidden });
-                  }
+                  onUpdateNote(layer.item.id, { hidden: !isHidden });
                   setActiveMenuLayerId(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 rounded-full text-stone-700 hover:text-stone-900 transition-colors text-left cursor-pointer"
@@ -991,11 +926,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (layer.type === 'note') {
-                    onDuplicateNote(layer.item.id);
-                  } else {
-                    onDuplicateStroke(layer.item.id);
-                  }
+                  onDuplicateNote(layer.item.id);
                   setActiveMenuLayerId(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 rounded-full text-stone-700 hover:text-stone-900 transition-colors text-left cursor-pointer"
@@ -1007,11 +938,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (layer.type === 'note') {
-                    onDeleteNote(layer.item.id);
-                  } else {
-                    onDeleteStroke(layer.item.id);
-                  }
+                  onDeleteNote(layer.item.id);
                   setActiveMenuLayerId(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 rounded-full text-stone-700 hover:text-stone-900 transition-colors text-left cursor-pointer"
@@ -1059,33 +986,18 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
               <div className="px-3 py-1 flex items-center justify-between gap-2">
                 <Palette className="w-4 h-4 text-stone-600 shrink-0" />
                 <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
-                  {layer.type === 'note' ? (
-                    COLOR_PALETTE_ITEMS.map(item => (
-                      <button
-                        key={item.color}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onUpdateNote(layer.item.id, { color: item.color });
-                          setActiveMenuLayerId(null);
-                        }}
-                        className={`w-3.5 h-3.5 rounded-full hover:scale-125 transition-transform shrink-0 cursor-pointer shadow-xs ${item.swatch}`}
-                        title={item.label}
-                      />
-                    ))
-                  ) : (
-                    DRAWING_PALETTE.map(color => (
-                      <button
-                        key={color}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onUpdateStroke(layer.item.id, { color });
-                          setActiveMenuLayerId(null);
-                        }}
-                        className="w-3.5 h-3.5 rounded-full border border-stone-400 hover:scale-125 transition-transform shrink-0 cursor-pointer shadow-xs"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))
-                  )}
+                  {COLOR_PALETTE_ITEMS.map(item => (
+                    <button
+                      key={item.color}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateNote(layer.item.id, { color: item.color });
+                        setActiveMenuLayerId(null);
+                      }}
+                      className={`w-3.5 h-3.5 rounded-full hover:scale-125 transition-transform shrink-0 cursor-pointer shadow-xs ${item.swatch}`}
+                      title={item.label}
+                    />
+                  ))}
                 </div>
               </div>
             </motion.div>

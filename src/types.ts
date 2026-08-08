@@ -1,5 +1,3 @@
-export type DrawingMode = 'select' | 'pen' | 'line' | 'arrow' | 'highlighter' | 'eraser';
-
 export type NoteColor = 'white' | 'cream' | 'sage' | 'sky' | 'rose' | 'lavender' | 'slate';
 
 export type FontFamily = 'sans' | 'serif' | 'mono';
@@ -77,21 +75,6 @@ export interface FileMetadata {
   tags?: string[];
 }
 
-export interface Stroke {
-  id: string;
-  points: Point[];
-  color: string;
-  width: number;
-  mode: DrawingMode;
-  opacity?: number;
-  title?: string;
-  locked?: boolean;
-  hidden?: boolean;
-  pinned?: boolean;
-  folderId?: string;
-  tags?: string[];
-}
-
 export interface Attachment {
   id: string;
   name: string;
@@ -132,7 +115,6 @@ export interface VaultEncryptedData {
 export interface VaultPayload {
   version: number;
   notes: Note[];
-  strokes: Stroke[];
   folders?: Folder[];
   canvasOffset: Point;
   canvasScale: number;
@@ -140,6 +122,5 @@ export interface VaultPayload {
 
 export interface HistoryState {
   notes: Note[];
-  strokes: Stroke[];
   folders?: Folder[];
 }

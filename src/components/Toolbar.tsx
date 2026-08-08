@@ -6,7 +6,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Underline, ZoomIn, ZoomOut, Layers, List, ListOrdered, CheckSquare, FolderPlus, Palette, Type, Link2
 } from 'lucide-react';
-import { DrawingMode, NoteColor, FontFamily, FontSize, TextAlign } from '../types';
+import { NoteColor, FontFamily, FontSize, TextAlign } from '../types';
 import { FONT_FAMILY_STYLES, COLOR_PALETTE_ITEMS } from '../utils/theme';
 
 const HIGHLIGHT_COLORS = [
@@ -29,8 +29,6 @@ const TEXT_COLORS = [
 ];
 
 interface ToolbarProps {
-  activeMode?: DrawingMode;
-  setActiveMode?: (mode: DrawingMode) => void;
   currentColor?: string;
   setCurrentColor?: (color: string) => void;
   onAddNote: () => void;
@@ -73,8 +71,6 @@ interface ToolbarProps {
 }
 
 export const Toolbar: React.FC<ToolbarProps> = React.memo(({
-  activeMode = 'select',
-  setActiveMode,
   currentColor,
   setCurrentColor,
   onAddNote,
@@ -233,7 +229,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.92 }}
           title="Виділення та панорамування"
-          onClick={() => setActiveMode?.('select')}
           className="p-2 rounded-full transition-all text-stone-900 font-bold ring-1 ring-stone-400"
         >
           <MousePointer2 className="w-4 h-4" />
@@ -246,7 +241,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
           title="Створити нотатку (Create Note)"
           onClick={() => {
             onAddNote();
-            setActiveMode?.('select');
           }}
           className="p-2 rounded-full text-stone-600 hover:text-stone-900 transition-all cursor-pointer"
         >

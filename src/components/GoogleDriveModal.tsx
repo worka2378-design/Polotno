@@ -51,7 +51,6 @@ interface GoogleDriveModalProps {
   onClose: () => void;
   boardState: {
     notes: Note[];
-    strokes: any[];
     offset: { x: number; y: number };
     scale: number;
   };
@@ -279,7 +278,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     setBackupError(null);
     try {
       const data = await loadBoardFromDrive(driveBackupFileId || undefined);
-      if (data && (data.notes || data.strokes)) {
+      if (data && data.notes) {
         onRestoreBoard(data);
         setBackupSuccessMsg('Борд успішно відновлено');
         setTimeout(() => setBackupSuccessMsg(null), 3000);

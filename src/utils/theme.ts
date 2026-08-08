@@ -78,13 +78,3 @@ export const COLOR_PALETTE_ITEMS: { color: NoteColor; label: string; bg: string;
   { color: 'lavender', label: 'Кобальтовий лавандовий (Lavender)', bg: 'bg-[#d3d7eb] border border-[#a3a9d4]', swatch: 'bg-[#aeb4dd] border border-[#9198cc]' },
   { color: 'slate', label: 'Графіт (Graphite)', bg: 'bg-[#cbcfd5] border border-[#959ca7]', swatch: 'bg-[#a3abb8] border border-[#8691a1]' },
 ];
-
-export const DRAWING_PALETTE = [
-  '#27272a', // Dark Charcoal / Black
-  '#3f3f46', // Zinc Gray
-  '#2563eb', // Royal / Steel Blue
-  '#059669', // Deep Emerald
-  '#d97706', // Burnt Amber
-  '#dc2626', // Crimson Red
-  '#ffffff', // White
-];

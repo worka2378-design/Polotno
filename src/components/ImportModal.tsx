@@ -59,12 +59,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           setIsEncrypted(true);
           setParsedData(json as VaultEncryptedData);
           setDecryptedPayload(null);
-        } else if (json && (Array.isArray(json.notes) || Array.isArray(json.strokes))) {
+        } else if (json && Array.isArray(json.notes)) {
           setIsEncrypted(false);
           const payload: VaultPayload = {
             version: json.version || 1,
             notes: Array.isArray(json.notes) ? json.notes : [],
-            strokes: Array.isArray(json.strokes) ? json.strokes : [],
             canvasOffset: json.canvasOffset || { x: 0, y: 0 },
             canvasScale: json.canvasScale || 1,
           };
@@ -89,7 +88,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     if (!parsedData || !isEncrypted) return;
 
     const payload = await decryptVault(parsedData as VaultEncryptedData, password);
-    if (!payload || (!Array.isArray(payload.notes) && !Array.isArray(payload.strokes))) {
+    if (!payload || !Array.isArray(payload.notes)) {
       setErrorMsg('Невірний пароль або пошкоджений файл.');
       return;
     }
@@ -188,7 +187,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <div className="p-3 bg-[#e2d8c7]/80 border border-stone-300 rounded-2xl flex items-center gap-2 text-xs text-stone-800">
                 <FileCode className="w-4 h-4 text-stone-600 shrink-0" />
                 <span>
-                  Знайдено: {decryptedPayload.notes?.length || 0} нотаток, {decryptedPayload.strokes?.length || 0} штрихів
+                  Знайдено: {decryptedPayload.notes?.length || 0} нотаток
                 </span>
               </div>
 

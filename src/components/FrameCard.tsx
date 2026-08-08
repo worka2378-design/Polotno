@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { 
   Folder as FolderIcon, LayoutGrid, Plus, Trash2, Link2
 } from 'lucide-react';
-import { Folder, Note, Stroke, Point } from '../types';
+import { Folder, Note } from '../types';
 import { countLinksInContent } from '../utils/linkUtils';
 
 interface FrameCardProps {
   folder: Folder;
   containedNotes: Note[];
-  containedStrokes: Stroke[];
   scale: number;
   isSelected?: boolean;
   onSelect: (folderId: string) => void;
@@ -18,7 +17,6 @@ interface FrameCardProps {
     folderId: string,
     startFolderPos: { x: number; y: number },
     startNotesPos: Array<{ id: string; x: number; y: number }>,
-    startStrokesPos: Array<{ id: string; points: Point[] }>,
     totalDx: number,
     totalDy: number
   ) => void;
@@ -31,7 +29,6 @@ interface FrameCardProps {
 export const FrameCard: React.FC<FrameCardProps> = React.memo(({
   folder,
   containedNotes,
-  containedStrokes,
   scale,
   isSelected,
   onSelect,
@@ -62,15 +59,11 @@ export const FrameCard: React.FC<FrameCardProps> = React.memo(({
     const startClient = { x: e.clientX, y: e.clientY };
     const startFolderPos = { x, y };
     const startNotesPos = containedNotes.map((n) => ({ id: n.id, x: n.x, y: n.y }));
-    const startStrokesPos = containedStrokes.map((s) => ({
-      id: s.id,
-      points: s.points.map((p) => ({ ...p })),
-    }));
 
     const handlePointerMove = (ev: PointerEvent) => {
       const totalDx = (ev.clientX - startClient.x) / scale;
       const totalDy = (ev.clientY - startClient.y) / scale;
-      onMoveFrameAbsolute(folder.id, startFolderPos, startNotesPos, startStrokesPos, totalDx, totalDy);
+      onMoveFrameAbsolute(folder.id, startFolderPos, startNotesPos, totalDx, totalDy);
     };
 
     const handlePointerUp = () => {
@@ -103,14 +96,6 @@ export const FrameCard: React.FC<FrameCardProps> = React.memo(({
       const nh = n.height || 220;
       if (n.x + nw > maxContentRight) maxContentRight = n.x + nw;
       if (n.y + nh > maxContentBottom) maxContentBottom = n.y + nh;
-    });
-
-    containedStrokes.forEach((s) => {
-      if (s.hidden) return;
-      s.points.forEach((p) => {
-        if (p.x > maxContentRight) maxContentRight = p.x;
-        if (p.y > maxContentBottom) maxContentBottom = p.y;
-      });
     });
 
     const paddingRight = 32;
@@ -208,7 +193,7 @@ export const FrameCard: React.FC<FrameCardProps> = React.memo(({
             )}
 
             <span className="text-[10px] text-stone-600 bg-stone-300/60 px-2 py-0.5 rounded-full ml-0.5 font-mono">
-              {containedNotes.length + containedStrokes.length}
+              {containedNotes.length}
             </span>
 
             {totalFolderLinks > 0 && (
